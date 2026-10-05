@@ -8,6 +8,9 @@ concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  PDFIUM_RELEASE: chromium/8076
+
 jobs:
   changeset:
     name: Changeset Validation
@@ -46,6 +49,9 @@ jobs:
 
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
+
+      - name: Verify Cargo.lock is up to date
+        run: cargo fetch --locked --manifest-path core/Cargo.toml
 
       - name: Install dependencies
         run: bun install --frozen-lockfile

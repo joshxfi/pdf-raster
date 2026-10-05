@@ -10,6 +10,9 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  PDFIUM_RELEASE: chromium/8076
+
 jobs:
   build-native:
     name: Build ${{ matrix.platform_arch_abi }}
@@ -65,6 +68,9 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_targets }}
+
+      - name: Verify Cargo.lock is up to date
+        run: cargo fetch --locked --manifest-path core/Cargo.toml
 
       - name: Install dependencies
         run: bun install --frozen-lockfile --filter pdf-raster
