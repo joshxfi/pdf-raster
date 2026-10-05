@@ -1,9 +1,32 @@
+import { createHash } from "node:crypto";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { gunzipSync } from "node:zlib";
 
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+
+// Bump deliberately: update the tag and every hash together, then run the
+// full test suite. Hashes come from the GitHub release asset digests.
+const PINNED_PDFIUM_RELEASE = "chromium/8076";
+const PINNED_PDFIUM_SHA256: Record<string, string> = {
+  "pdfium-linux-arm64.tgz":
+    "d7247b33ae5545615a5e877235dd97afc879e3a8805689684f528cae3339d352",
+  "pdfium-linux-musl-arm64.tgz":
+    "8a87d594a6c3d3c9bc04fabbe2c5809e344eb49f21ba1c59e2cbfd6a41bd3db1",
+  "pdfium-linux-musl-x64.tgz":
+    "312d2a7d66aecbf3b8f5965af6aa458cc433a35190f4a1ec69b5560683ca91b4",
+  "pdfium-linux-x64.tgz":
+    "d9d67bc40af03aef4fe28a60b19b1086f28ace019c8c9caf19cb7fe3d14ceca3",
+  "pdfium-mac-arm64.tgz":
+    "0d6781fe08906baff3d82c90953e519fbc4eb253fe76431e5ed53b157763b97c",
+  "pdfium-mac-x64.tgz":
+    "40865f34642c34d82cc336132df9e0347133f4692cd46776647af160f9a5cca9",
+  "pdfium-win-arm64.tgz":
+    "ab7c45c25fc8456fd9b94666ce3dd27a940f4984f54b328f012468f869d34346",
+  "pdfium-win-x64.tgz":
+    "808d36da9bc5a3104315fb307c80998121f565ee53953633bf33e80d7429e5ac",
+};
 
 function isMusl() {
   if (process.platform !== "linux") {
@@ -22,7 +45,7 @@ function sanitizePathSegment(value: string): string {
 }
 
 function getConfiguredRelease() {
-  return process.env.PDFIUM_RELEASE?.trim() || "latest";
+  return process.env.PDFIUM_RELEASE?.trim() || PINNED_PDFIUM_RELEASE;
 }
 
 function getRequestedTarget() {
@@ -163,10 +186,7 @@ function getPdfiumDownloadUrl() {
 
   const target = getTargetDescriptor();
   const release = getConfiguredRelease();
-  const releasePath =
-    release === "latest"
-      ? "latest/download"
-      : `download/${encodeURIComponent(release)}`;
+  const releasePath = `download/${encodeURIComponent(release)}`;
 
   return `https://github.com/bblanchon/pdfium-binaries/releases/${releasePath}/${target.archiveName}`;
 }
@@ -226,12 +246,40 @@ function extractMatchingFileFromTar(
   );
 }
 
+function getExpectedSha256(archiveName: string): string {
+  const override = process.env.PDFIUM_SHA256?.trim();
+
+  if (override) {
+    return override.toLowerCase();
+  }
+
+  if (
+    getConfiguredRelease() === PINNED_PDFIUM_RELEASE &&
+    !process.env.PDFIUM_DOWNLOAD_URL?.trim()
+  ) {
+    const pinned = PINNED_PDFIUM_SHA256[archiveName];
+
+    if (!pinned) {
+      throw new Error(`No pinned PDFium checksum for ${archiveName}.`);
+    }
+
+    return pinned;
+  }
+
+  throw new Error(
+    "PDFIUM_SHA256 must be set when PDFIUM_RELEASE or PDFIUM_DOWNLOAD_URL overrides the pinned PDFium release.",
+  );
+}
+
 async function downloadPdfiumToCache() {
   const cachedPdfiumPath = getCachedPdfiumPath();
 
   if (existsSync(cachedPdfiumPath)) {
     return cachedPdfiumPath;
   }
+
+  const target = getTargetDescriptor();
+  const expectedSha256 = getExpectedSha256(target.archiveName);
 
   mkdirSync(dirname(cachedPdfiumPath), { recursive: true });
 
@@ -245,8 +293,17 @@ async function downloadPdfiumToCache() {
     );
   }
 
-  const target = getTargetDescriptor();
   const compressedArchive = Buffer.from(await response.arrayBuffer());
+  const actualSha256 = createHash("sha256")
+    .update(compressedArchive)
+    .digest("hex");
+
+  if (actualSha256 !== expectedSha256) {
+    throw new Error(
+      `PDFium archive checksum mismatch for ${target.archiveName}: expected ${expectedSha256}, got ${actualSha256}.`,
+    );
+  }
+
   const extractedArchive = gunzipSync(compressedArchive);
   const libraryBuffer = extractMatchingFileFromTar(
     extractedArchive,

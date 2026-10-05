@@ -6,6 +6,7 @@
     "PDFIUM_DOWNLOAD_URL",
     "PDFIUM_LIB_PATH",
     "PDFIUM_RELEASE",
+    "PDFIUM_SHA256",
     "NAPI_RS_NATIVE_LIBRARY_PATH"
   ],
   "tasks": {

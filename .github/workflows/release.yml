@@ -10,6 +10,12 @@ concurrency:
   group: release-${{ github.ref }}
   cancel-in-progress: false
 
+env:
+  PDFIUM_RELEASE: chromium/8076
+
+permissions:
+  contents: read
+
 jobs:
   build-native:
     name: Build ${{ matrix.platform_arch_abi }}
@@ -51,20 +57,24 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
 
       - name: Setup Rust
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@89b12181fb390509a0842a86cc55eeb8eb928c1d # stable
         with:
+          toolchain: stable
           targets: ${{ matrix.rust_targets }}
+
+      - name: Verify Cargo.lock is up to date
+        run: cargo fetch --locked --manifest-path core/Cargo.toml
 
       - name: Install dependencies
         run: bun install --frozen-lockfile --filter pdf-raster
@@ -87,8 +97,24 @@ jobs:
         env:
           PDFIUM_TARGET: ${{ matrix.target }}
 
+      - name: Smoke test native artifact
+        shell: bash
+        env:
+          NAPI_RS_NATIVE_LIBRARY_PATH: ${{ github.workspace }}/core/artifacts/${{ matrix.platform_arch_abi }}/pdf-raster.${{ matrix.platform_arch_abi }}.node
+        run: |
+          set -euo pipefail
+          # Remove any published platform packages so the loader cannot
+          # silently fall back to an old npm binary instead of this artifact.
+          find . -maxdepth 4 -type d -path '*/node_modules/pdf-raster-*' -prune -exec rm -rf {} +
+          test -f "$NAPI_RS_NATIVE_LIBRARY_PATH"
+          ls -la "$(dirname "$NAPI_RS_NATIVE_LIBRARY_PATH")"
+          cd core
+          bun test ./test
+          node ./test/node-smoke.ts
+          node ./test/concurrent-init.ts
+
       - name: Upload native artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: native-${{ matrix.platform_arch_abi }}
           path: core/artifacts/${{ matrix.platform_arch_abi }}
@@ -98,6 +124,7 @@ jobs:
     name: Changesets Release
     runs-on: ubuntu-latest
     needs: build-native
+    if: github.ref == 'refs/heads/main'
     permissions:
       contents: write
       id-token: write
@@ -105,15 +132,15 @@ jobs:
 
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4
         with:
           fetch-depth: 0
 
       - name: Setup Bun
-        uses: oven-sh/setup-bun@v2
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4
         with:
           node-version: 24
           registry-url: https://registry.npmjs.org
@@ -122,13 +149,13 @@ jobs:
         run: bun install --frozen-lockfile
 
       - name: Download native artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
           pattern: native-*
           path: core/artifacts
 
       - name: Release
-        uses: changesets/action@v1
+        uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
           commit: "chore: version packages"
           title: "Version Packages"
