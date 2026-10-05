@@ -45,8 +45,8 @@ export default function HomePage() {
                   {benchmarkSummary.speedupRange}
                 </p>
                 <p className="mt-2 text-sm leading-6 text-fd-muted-foreground">
-                  Faster than the included `pdfjs-dist` canvas backends in the
-                  local benchmark sample.
+                  Faster than `pdfjs-dist` canvas backends on 300 DPI letter
+                  pages (AMD Ryzen 7 7800X3D).
                 </p>
               </div>
             </div>

@@ -1,11 +1,12 @@
 ---
 title: Benchmark
-description: Understand the current local benchmark setup and sample results for pdf-raster.
+description: Understand the local benchmark setup, sample results and throughput numbers for pdf-raster.
 ---
 
 <Callout type="info" title="Sample local results">
-  The numbers on this page are from a local benchmark run against the included
-  fixture PDFs. Treat them as sample measurements, not universal guarantees.
+  The numbers on this page are from a local benchmark run against the
+  generated fixture PDFs, on an AMD Ryzen 7 7800X3D (16 threads) running Linux
+  x64. Treat them as sample measurements, not universal guarantees.
 </Callout>
 
 ## What the benchmark compares
@@ -61,42 +62,71 @@ bun run benchmark -- --libs pdf-raster --output jpeg --concurrency 4
 
 ## Sample output
 
-The sample numbers below were measured on the old tiny fixtures and will be
-refreshed against the new generated fixtures.
+Measured on an AMD Ryzen 7 7800X3D (16 threads), Linux x64, with
+`bun run benchmark -- --runs 5 --warmups 1`:
 
 ```text
-File: multi-page.pdf
-Settings: dpi=300, output=png, pages=all, warmups=1, runs=5
-Input size: 842 B
-Library                       Pages  Avg total  P50 total  Avg/page  Avg bytes
-----------------------------  -----  ---------  ---------  --------  ---------
-pdf-raster                    2      1.72 ms    1.70 ms    0.86 ms   36.2 KB
-pdfjs-dist + @napi-rs/canvas  2      11.96 ms   11.91 ms   5.98 ms   22.6 KB
-pdfjs-dist + node-canvas      2      14.37 ms   14.37 ms   7.19 ms   22.8 KB
+File: text-20.pdf (benchmark/.fixtures/text-20.pdf)
+Settings: dpi=300, output=png, pages=all, warmups=1, runs=5, libs=pdf-raster,pdfjs-napi,pdfjs-node-canvas, concurrency=1
+Input size: 112 KB
+Library                       Pages  Avg total   P50 total   Avg/page   Pages/s  Avg bytes
+----------------------------  -----  ----------  ----------  ---------  -------  ---------
+pdf-raster                    20     338.19 ms   337.57 ms   16.91 ms   59.2     59.7 MB  
+pdfjs-dist + @napi-rs/canvas  20     4409.08 ms  4376.52 ms  220.45 ms  n/a      20.8 MB  
+pdfjs-dist + node-canvas      20     6562.84 ms  6528.58 ms  328.14 ms  n/a      29.5 MB  
 
-Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 6.94x
-Relative speed (pdf-raster vs pdfjs-dist + node-canvas): total 8.35x
+Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 13.04x
+Relative speed (pdf-raster vs pdfjs-dist + node-canvas): total 19.41x
 
-File: single-page.pdf
-Settings: dpi=300, output=png, pages=all, warmups=1, runs=5
-Input size: 583 B
-Library                       Pages  Avg total  P50 total  Avg/page  Avg bytes
-----------------------------  -----  ---------  ---------  --------  ---------
-pdf-raster                    1      1.29 ms    1.00 ms    1.29 ms   13.4 KB
-pdfjs-dist + @napi-rs/canvas  1      5.81 ms    5.83 ms    5.81 ms   7.6 KB
-pdfjs-dist + node-canvas      1      7.25 ms    7.26 ms    7.25 ms   7.8 KB
+File: mixed-10.pdf (benchmark/.fixtures/mixed-10.pdf)
+Settings: dpi=300, output=png, pages=all, warmups=1, runs=5, libs=pdf-raster,pdfjs-napi,pdfjs-node-canvas, concurrency=1
+Input size: 2.9 MB
+Library                       Pages  Avg total   P50 total   Avg/page   Pages/s  Avg bytes
+----------------------------  -----  ----------  ----------  ---------  -------  ---------
+pdf-raster                    10     259.43 ms   258.86 ms   25.94 ms   38.6     53.1 MB  
+pdfjs-dist + @napi-rs/canvas  10     2762.64 ms  2757.36 ms  276.26 ms  n/a      18.5 MB  
+skipped: pdfjs-node-canvas (Image or Canvas expected)
 
-Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 4.51x
-Relative speed (pdf-raster vs pdfjs-dist + node-canvas): total 5.63x
+Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 10.65x
 ```
+
+`pdfjs-dist + node-canvas` is skipped on `mixed-10.pdf` because it fails on the
+embedded image (`Image or Canvas expected`). The benchmark records the failure
+and continues with the other backends.
+
+## Throughput and concurrency
+
+`--concurrency <n>` starts `n` simultaneous `convert()` calls per measured run
+(pdf-raster only) and reports pages per second across all of them:
+
+```bash
+bun run benchmark -- --libs pdf-raster --output jpeg --concurrency 4
+```
+
+pdf-raster throughput on `text-20.pdf` and `mixed-10.pdf` at 300 DPI, in pages
+per second (same machine), with 1 and 4 concurrent calls:
+
+| Format | Concurrency | text-20 | mixed-10 |
+| :----- | :---------- | :------ | :------- |
+| PNG    | 1           | 59.1    | 39.7     |
+| PNG    | 4           | 60.8    | 42.0     |
+| JPEG   | 1           | 48.4    | 32.5     |
+| JPEG   | 4           | 58.7    | 39.5     |
+| WebP   | 1           | 53.8    | 36.3     |
+| WebP   | 4           | 56.6    | 38.8     |
+
+Compared with 0.1.x on the same machine, JPEG went from 7.0 to 48.4 pages/s and
+PNG from 31.7 to 59.1 pages/s on `text-20.pdf` at concurrency 1. See
+[Concurrency and memory](/docs/runtime-and-environment#concurrency-and-memory)
+for how rendering, encoding and memory behave under load.
 
 ## How to read the multipliers
 
 The relative speed line is a multiplier, not a percentage.
 
-- If the benchmark says `6.94x`, it means the comparison backend took `6.94`
+- If the benchmark says `13.04x`, it means the comparison backend took `13.04`
   times as long on that metric.
-- In other words, `pdf-raster` was `6.94x` faster on that sample.
+- In other words, `pdf-raster` was `13.04x` faster on that sample.
 
 ## What this benchmark is useful for
 

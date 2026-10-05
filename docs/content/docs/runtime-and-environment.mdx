@@ -28,6 +28,46 @@ but it means the package should stay on the backend side of your app.
   other server-only code. Do not run it in Edge routes.
 </Callout>
 
+### Next.js
+
+Tell Next.js not to bundle the package, because the native binding and the
+PDFium library are loaded at runtime and must stay as real files on disk:
+
+```ts
+import type { NextConfig } from "next";
+
+const nextConfig: NextConfig = {
+  serverExternalPackages: ["pdf-raster"],
+};
+
+export default nextConfig;
+```
+
+## Concurrency and memory
+
+PDFium is not thread-safe, so `pdf-raster` serializes document loading and page
+rendering behind one process-wide lock. Concurrent `convert()` calls are safe;
+they take turns rendering.
+
+Encoding does not need that lock. Each call encodes its pages on up to 4 worker
+threads, and the lock is released as soon as the call's last page is rendered,
+so other calls can start rendering while earlier pages are still being encoded.
+
+To keep memory bounded, at most 8 rendered pages (RGBA frames) exist at once
+across the whole process, no matter how many calls are running. Estimate the
+peak with:
+
+```text
+8 × width × height × 4 bytes
+```
+
+At 300 DPI on a US letter page (2550×3300 px) that is about 270 MB. The figure
+scales with page area and with the square of the DPI.
+
+If the DPI or page size can come from untrusted input, set `maxPixels` so
+oversized renders are rejected with `INVALID_OPTIONS` before any bitmap is
+allocated.
+
 ## Native dependency model
 
 At runtime, the package needs:

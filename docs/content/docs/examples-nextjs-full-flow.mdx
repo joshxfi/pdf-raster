@@ -8,6 +8,12 @@ description: Build a simple App Router flow with a client upload form, a Node.js
   should only send `FormData` and render the returned image payloads.
 </Callout>
 
+<Callout type="info" title="Next.js config">
+  Add `serverExternalPackages: ["pdf-raster"]` to your `next.config.ts` so the
+  native binding is not bundled. See
+  [Runtime and environment](/docs/runtime-and-environment).
+</Callout>
+
 This example shows a complete App Router flow:
 
 <Steps>
