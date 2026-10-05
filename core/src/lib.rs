@@ -411,7 +411,7 @@ fn render_pages(request: ConvertRequest) -> std::result::Result<Vec<NativeConver
 const MAX_DIMENSION_PIXELS: f64 = 65_535.0;
 
 fn points_to_pixels(points: f32, dpi: u32) -> f64 {
-  ((f64::from(points) / 72.0) * f64::from(dpi)).round().max(1.0)
+  f64::from(((points / 72.0) * dpi as f32).round().max(1.0))
 }
 
 fn map_pdfium_error(error: PdfiumError) -> ConvertError {
