@@ -65,6 +65,11 @@ export type BenchSummary = {
   runs: BenchRunResult[];
 };
 
+export type BenchFailure = {
+  library: BenchLibrary;
+  message: string;
+};
+
 export type FileBenchmarkReport = {
   inputPath: string;
   inputBytes: number;
@@ -78,6 +83,7 @@ export type FileBenchmarkReport = {
     concurrency: number;
   };
   summaries: BenchSummary[];
+  failures?: BenchFailure[];
 };
 
 export type BenchmarkReport = {
