@@ -55,9 +55,15 @@ bun run --filter pdf-raster test
     PDFIUM_RELEASE: {
       type: "string",
       description:
-        "Optional release selector for the cached or downloaded PDFium binary.",
+        "Optional release selector for the cached or downloaded PDFium binary. Defaults to the pinned release; overriding it (or PDFIUM_DOWNLOAD_URL) requires PDFIUM_SHA256.",
       required: false,
-      default: '"latest"',
+      default: '"chromium/8076"',
+    },
+    PDFIUM_SHA256: {
+      type: "string",
+      description:
+        "SHA-256 of the PDFium archive. Required when PDFIUM_RELEASE or PDFIUM_DOWNLOAD_URL overrides the pinned release.",
+      required: false,
     },
   }}
 />

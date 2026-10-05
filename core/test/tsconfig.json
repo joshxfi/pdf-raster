@@ -9,6 +9,6 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["./node-smoke.ts"],
+  "include": ["./node-smoke.ts", "./concurrent-init.ts"],
   "exclude": ["node_modules"]
 }

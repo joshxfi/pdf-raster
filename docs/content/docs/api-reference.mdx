@@ -75,6 +75,12 @@ function convert(
       required: false,
       default: "true",
     },
+    maxPixels: {
+      type: "number",
+      description:
+        "Maximum pixels per rendered page (width × height). Larger renders throw INVALID_OPTIONS. Unlimited when omitted.",
+      required: false,
+    },
   }}
 />
 

@@ -8,9 +8,9 @@ use napi_derive::napi;
 use pdfium_render::prelude::*;
 use std::io::Cursor;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, MutexGuard};
 
-static PDFIUM: OnceLock<Mutex<Pdfium>> = OnceLock::new();
+static PDFIUM: Mutex<Option<Pdfium>> = Mutex::new(None);
 
 #[derive(Debug)]
 #[napi(object)]
@@ -30,6 +30,7 @@ pub struct NativeConvertOptions {
   pub password: Option<String>,
   pub crop: Option<NativeCrop>,
   pub render_annotations: Option<bool>,
+  pub max_pixels: Option<u32>,
 }
 
 #[napi(object)]
@@ -63,6 +64,7 @@ struct ResolvedConvertOptions {
   password: Option<String>,
   crop: Option<NativeCrop>,
   render_annotations: bool,
+  max_pixels: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -163,27 +165,25 @@ impl From<ConvertError> for Error {
   }
 }
 
-fn get_pdfium(pdfium_library_path: Option<&str>) -> std::result::Result<&'static Mutex<Pdfium>, ConvertError> {
-  if let Some(pdfium) = PDFIUM.get() {
-    return Ok(pdfium);
-  }
-
-  let bindings = bind_pdfium(pdfium_library_path).map_err(|error| {
+fn lock_pdfium(pdfium_library_path: Option<&str>) -> std::result::Result<MutexGuard<'static, Option<Pdfium>>, ConvertError> {
+  let mut guard = PDFIUM.lock().map_err(|_| {
     ConvertError::new(
-      ErrorCode::PdfiumUnavailable,
-      format!("Unable to initialize PDFium: {error}"),
+      ErrorCode::RenderError,
+      "The PDFium renderer lock was poisoned by a prior panic.",
     )
   })?;
-  let pdfium = Pdfium::new(bindings);
 
-  let _ = PDFIUM.set(Mutex::new(pdfium));
+  if guard.is_none() {
+    let bindings = bind_pdfium(pdfium_library_path).map_err(|error| {
+      ConvertError::new(
+        ErrorCode::PdfiumUnavailable,
+        format!("Unable to initialize PDFium: {error}"),
+      )
+    })?;
+    *guard = Some(Pdfium::new(bindings));
+  }
 
-  PDFIUM.get().ok_or_else(|| {
-    ConvertError::new(
-      ErrorCode::PdfiumUnavailable,
-      "PDFium initialization completed but no global binding was stored.",
-    )
-  })
+  Ok(guard)
 }
 
 fn bind_pdfium(pdfium_library_path: Option<&str>) -> std::result::Result<Box<dyn PdfiumLibraryBindings>, PdfiumError> {
@@ -216,6 +216,13 @@ fn normalize_options(options: NativeConvertOptions) -> std::result::Result<Resol
     }
   }
 
+  if options.max_pixels == Some(0) {
+    return Err(ConvertError::new(
+      ErrorCode::InvalidOptions,
+      "maxPixels must be greater than zero.",
+    ));
+  }
+
   Ok(ResolvedConvertOptions {
     pages: options.pages,
     dpi: options.dpi.unwrap_or(300),
@@ -223,6 +230,7 @@ fn normalize_options(options: NativeConvertOptions) -> std::result::Result<Resol
     password: options.password,
     crop: options.crop,
     render_annotations: options.render_annotations.unwrap_or(true),
+    max_pixels: options.max_pixels,
   })
 }
 
@@ -234,6 +242,7 @@ fn default_native_options() -> NativeConvertOptions {
     password: None,
     crop: None,
     render_annotations: None,
+    max_pixels: None,
   }
 }
 
@@ -315,11 +324,11 @@ fn render_pages(request: ConvertRequest) -> std::result::Result<Vec<NativeConver
   let options = normalize_options(request.options)?;
   let password = options.password.as_deref();
 
-  let pdfium_lock = get_pdfium(request.pdfium_library_path.as_deref())?;
-  let pdfium = pdfium_lock.lock().map_err(|_| {
+  let pdfium_guard = lock_pdfium(request.pdfium_library_path.as_deref())?;
+  let pdfium = pdfium_guard.as_ref().ok_or_else(|| {
     ConvertError::new(
-      ErrorCode::RenderError,
-      "The PDFium renderer lock was poisoned by a prior panic.",
+      ErrorCode::PdfiumUnavailable,
+      "PDFium initialization completed but no global binding was stored.",
     )
   })?;
 
@@ -342,8 +351,34 @@ fn render_pages(request: ConvertRequest) -> std::result::Result<Vec<NativeConver
     let page = document.pages().get(page_number).map_err(map_pdfium_error)?;
 
     let width = points_to_pixels(page.width().value, options.dpi);
+    // Mirror pdfium-render's bitmap sizing for a target-width render so the guard matches the real bitmap.
+    let height = f64::from((page.height().value * (width as f32 / page.width().value)).round().max(1.0));
+
+    if width > MAX_DIMENSION_PIXELS || height > MAX_DIMENSION_PIXELS {
+      return Err(ConvertError::new(
+        ErrorCode::InvalidOptions,
+        format!(
+          "Page {page_index} would render at {width:.0}x{height:.0} pixels at {} DPI, exceeding the maximum dimension of 65535 pixels. Lower the dpi.",
+          options.dpi
+        ),
+      ));
+    }
+
+    if let Some(max_pixels) = options.max_pixels {
+      let pixel_count = width * height;
+      if pixel_count > f64::from(max_pixels) {
+        return Err(ConvertError::new(
+          ErrorCode::InvalidOptions,
+          format!(
+            "Page {page_index} would render at {width:.0}x{height:.0} pixels ({pixel_count:.0} total) at {} DPI, exceeding maxPixels ({max_pixels}). Lower the dpi or raise maxPixels.",
+            options.dpi
+          ),
+        ));
+      }
+    }
+
     let render_config = PdfRenderConfig::new()
-      .set_target_width(i32::from(width))
+      .set_target_width(width as i32)
       .set_clear_color(PdfColor::WHITE)
       .render_annotations(options.render_annotations)
       .render_form_data(options.render_annotations);
@@ -374,9 +409,10 @@ fn render_pages(request: ConvertRequest) -> std::result::Result<Vec<NativeConver
   Ok(converted)
 }
 
-fn points_to_pixels(points: f32, dpi: u32) -> u16 {
-  let pixels = ((points / 72.0) * dpi as f32).round();
-  pixels.max(1.0).min(u16::MAX as f32) as u16
+const MAX_DIMENSION_PIXELS: f64 = 65_535.0;
+
+fn points_to_pixels(points: f32, dpi: u32) -> f64 {
+  f64::from(((points / 72.0) * dpi as f32).round().max(1.0))
 }
 
 fn map_pdfium_error(error: PdfiumError) -> ConvertError {

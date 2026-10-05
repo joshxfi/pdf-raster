@@ -24,6 +24,7 @@ type NativeConvertOptions = {
     height: number;
   };
   renderAnnotations?: boolean;
+  maxPixels?: number;
 };
 
 type NativeBinding = {

@@ -222,4 +222,82 @@ describe("pdf-raster", () => {
 
     await expectPdfError(convert(malformedBytes), "MALFORMED_PDF");
   });
+
+  test("rejects renders that exceed maxPixels", async () => {
+    await expectPdfError(
+      convert(singlePageFixture, { maxPixels: 300_000 }),
+      "INVALID_OPTIONS",
+    );
+  });
+
+  test("allows renders within maxPixels", async () => {
+    const pages = await convert(singlePageFixture, { maxPixels: 400_000 });
+
+    expect(pages).toHaveLength(1);
+    expect(pages[0].width).toBe(833);
+    expect(pages[0].height).toBe(417);
+  });
+
+  test("rejects very high dpi when maxPixels is set, without allocating", async () => {
+    const start = performance.now();
+    await expectPdfError(
+      convert(singlePageFixture, { dpi: 20_000, maxPixels: 100_000_000 }),
+      "INVALID_OPTIONS",
+    );
+    expect(performance.now() - start).toBeLessThan(2000);
+  });
+
+  test("rejects pages wider than 65535 px instead of clamping", async () => {
+    const start = performance.now();
+    await expectPdfError(
+      convert(singlePageFixture, { dpi: 30_000 }),
+      "INVALID_OPTIONS",
+    );
+    expect(performance.now() - start).toBeLessThan(2000);
+  });
+
+  test("rejects fractional dpi below 1", async () => {
+    await expectPdfError(
+      convert(singlePageFixture, { dpi: 0.5 }),
+      "INVALID_OPTIONS",
+    );
+  });
+
+  test("rejects page indices beyond the u32 range", async () => {
+    await expectPdfError(
+      convert(singlePageFixture, { pages: [2 ** 32] }),
+      "INVALID_PAGE_INDEX",
+    );
+  });
+
+  test("rejects invalid maxPixels", async () => {
+    for (const maxPixels of [0, 1.5, 2 ** 32]) {
+      await expectPdfError(
+        convert(singlePageFixture, { maxPixels }),
+        "INVALID_OPTIONS",
+      );
+    }
+  });
+
+  test("maxPixels guard matches the rendered size of rotated pages", async () => {
+    const original = (await readFile(singlePageFixture)).toString("latin1");
+    const marker = "/MediaBox [0 0 200 100]";
+    expect(original).toContain(marker);
+    const rotated = Buffer.from(
+      original.replace(marker, `/Rotate 90 ${marker}`),
+      "latin1",
+    );
+
+    for (const dpi of [150, 300]) {
+      const [page] = await convert(rotated, { dpi });
+      const actual = page.width * page.height;
+
+      const pages = await convert(rotated, { dpi, maxPixels: actual });
+      expect(pages).toHaveLength(1);
+      await expectPdfError(
+        convert(rotated, { dpi, maxPixels: actual - 1 }),
+        "INVALID_OPTIONS",
+      );
+    }
+  });
 });

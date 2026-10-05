@@ -26,7 +26,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=18"
+    "node": ">=24"
   },
   "publishConfig": {
     "access": "public",
@@ -57,10 +57,11 @@
     "clean": "bun ../scripts/clean.ts .turbo artifacts dist npm target '*.node' '*.so' '*.dylib' '*.dll'",
     "check-types": "tsc --noEmit",
     "pdfium:download": "bun ../scripts/prefetch-pdfium.ts",
-    "test": "bun run build && bun run test:bun && bun run test:node",
+    "test": "bun run build && bun run test:bun && bun run test:node && bun run test:concurrency",
     "test:bun": "bun test ./test",
-    "test:node": "bun ./test/node-smoke.ts",
-    "prepublishOnly": "bun run build && bun run prepare-npm-packages"
+    "test:node": "node ./test/node-smoke.ts",
+    "test:concurrency": "bun ./test/concurrent-init.ts && node ./test/concurrent-init.ts",
+    "prepublishOnly": "echo \"Publish via 'bun run release:publish' from the repository root.\" && exit 1"
   },
   "keywords": [
     "pdf",
@@ -75,7 +76,7 @@
   ],
   "devDependencies": {
     "@napi-rs/cli": "^3.4.0",
-    "@types/node": "^22.15.3",
+    "@types/node": "^24.19.1",
     "typescript": "5.9.2"
   },
   "optionalDependencies": {

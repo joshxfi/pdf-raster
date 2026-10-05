@@ -98,6 +98,27 @@ function normalizeOptions(options: ConvertOptions = {}): ConvertOptions {
         "DPI must be a positive number.",
       );
     }
+
+    const dpi = Math.trunc(options.dpi);
+    if (dpi < 1 || dpi > 0xffff_ffff) {
+      throw new PdfToImagesError(
+        "INVALID_OPTIONS",
+        "DPI must be between 1 and 4294967295.",
+      );
+    }
+  }
+
+  if (options.maxPixels !== undefined) {
+    if (
+      !Number.isInteger(options.maxPixels) ||
+      options.maxPixels < 1 ||
+      options.maxPixels > 0xffff_ffff
+    ) {
+      throw new PdfToImagesError(
+        "INVALID_OPTIONS",
+        "maxPixels must be an integer between 1 and 4294967295.",
+      );
+    }
   }
 
   if (options.pages) {
@@ -109,10 +130,14 @@ function normalizeOptions(options: ConvertOptions = {}): ConvertOptions {
     }
 
     for (const pageIndex of options.pages) {
-      if (!Number.isInteger(pageIndex) || pageIndex < 0) {
+      if (
+        !Number.isSafeInteger(pageIndex) ||
+        pageIndex < 0 ||
+        pageIndex > 0xffff_ffff
+      ) {
         throw new PdfToImagesError(
           "INVALID_PAGE_INDEX",
-          "Page indices must be non-negative integers.",
+          "Page indices must be non-negative integers below 2^32.",
         );
       }
     }
@@ -125,6 +150,7 @@ function normalizeOptions(options: ConvertOptions = {}): ConvertOptions {
     password: options.password,
     crop: normalizeCrop(options.crop),
     renderAnnotations: options.renderAnnotations,
+    maxPixels: options.maxPixels,
   };
 }
 
