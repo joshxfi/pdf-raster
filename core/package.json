@@ -60,7 +60,7 @@
     "test": "bun run build && bun run test:bun && bun run test:node",
     "test:bun": "bun test ./test",
     "test:node": "bun ./test/node-smoke.ts",
-    "prepublishOnly": "bun run build && bun run prepare-npm-packages"
+    "prepublishOnly": "echo \"Publish via 'bun run release:publish' from the repository root.\" && exit 1"
   },
   "keywords": [
     "pdf",

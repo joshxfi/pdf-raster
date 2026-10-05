@@ -23,9 +23,11 @@ const fileNameByTarget = {
   "win32-x64-msvc": "pdfium.dll",
 } as const;
 
-const requireAllTargets =
-  process.env.REQUIRE_ALL_PDFIUM_ARTIFACTS === "true" ||
-  process.env.GITHUB_ACTIONS === "true";
+// Adding a platform target requires updating: core/package.json napi.targets,
+// fileNameByTarget above, and the expected-target map in
+// scripts/publish-packages.ts.
+const allowPartialTargets =
+  process.env.ALLOW_PARTIAL_PDFIUM_ARTIFACTS === "true";
 
 function walk(dir: string): string[] {
   const entries = readdirSync(dir, { withFileTypes: true });
@@ -97,7 +99,7 @@ for (const target of Object.keys(fileNameByTarget)) {
     continue;
   }
 
-  if (requireAllTargets) {
+  if (!allowPartialTargets) {
     console.error(`Missing PDFium artifact for ${target}`);
     process.exit(1);
   }
