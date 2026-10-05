@@ -97,6 +97,22 @@ jobs:
         env:
           PDFIUM_TARGET: ${{ matrix.target }}
 
+      - name: Smoke test native artifact
+        shell: bash
+        env:
+          NAPI_RS_NATIVE_LIBRARY_PATH: ${{ github.workspace }}/core/artifacts/${{ matrix.platform_arch_abi }}/pdf-raster.${{ matrix.platform_arch_abi }}.node
+        run: |
+          set -euo pipefail
+          # Remove any published platform packages so the loader cannot
+          # silently fall back to an old npm binary instead of this artifact.
+          find . -maxdepth 4 -type d -path '*/node_modules/pdf-raster-*' -prune -exec rm -rf {} +
+          test -f "$NAPI_RS_NATIVE_LIBRARY_PATH"
+          ls -la "$(dirname "$NAPI_RS_NATIVE_LIBRARY_PATH")"
+          cd core
+          bun test ./test
+          node ./test/node-smoke.ts
+          node ./test/concurrent-init.ts
+
       - name: Upload native artifact
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:

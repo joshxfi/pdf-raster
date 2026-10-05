@@ -59,8 +59,8 @@
     "pdfium:download": "bun ../scripts/prefetch-pdfium.ts",
     "test": "bun run build && bun run test:bun && bun run test:node && bun run test:concurrency",
     "test:bun": "bun test ./test",
-    "test:node": "bun ./test/node-smoke.ts",
-    "test:concurrency": "bun ./test/concurrent-init.ts",
+    "test:node": "node ./test/node-smoke.ts",
+    "test:concurrency": "bun ./test/concurrent-init.ts && node ./test/concurrent-init.ts",
     "prepublishOnly": "bun run build && bun run prepare-npm-packages"
   },
   "keywords": [
