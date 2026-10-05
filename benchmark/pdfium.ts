@@ -1,8 +1,9 @@
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { existsSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { generateFixtures } from "./fixtures";
 import type { BenchOptions, BenchRunResult } from "./types";
 
 type PdfToImagesModule = typeof import("pdf-raster");
@@ -107,15 +108,7 @@ function getMimeType(outputFormat: BenchOptions["outputFormat"]): string {
 }
 
 export function getDefaultBenchmarkInputs(): string[] {
-  const fixturesDir = resolve(coreRoot, "test", "fixtures");
-
-  return readdirSync(fixturesDir)
-    .filter((entry) => entry.endsWith(".pdf"))
-    .map((entry) => resolve(fixturesDir, entry))
-    .filter(
-      (entry) => readFileSync(entry).subarray(0, 5).toString() === "%PDF-",
-    )
-    .sort();
+  return generateFixtures(resolve(here, ".fixtures"));
 }
 
 export async function runPdfiumBenchmark(
@@ -123,13 +116,23 @@ export async function runPdfiumBenchmark(
   options: BenchOptions,
 ): Promise<BenchRunResult> {
   const { convert } = await loadPdfToImages();
+  const concurrency = options.concurrency;
   const totalStart = performance.now();
-  const pages = await convert(inputPath, {
-    dpi: options.dpi,
-    outputFormat: options.outputFormat,
-    pages: options.pages,
-  });
+  const results = await Promise.all(
+    Array.from({ length: concurrency }, () =>
+      convert(inputPath, {
+        dpi: options.dpi,
+        outputFormat: options.outputFormat,
+        pages: options.pages,
+      }),
+    ),
+  );
   const totalMs = performance.now() - totalStart;
+  const pages = results[0];
+  const totalPages = results.reduce(
+    (total, result) => total + result.length,
+    0,
+  );
   const outputBytes = pages.reduce(
     (total, page) => total + page.data.byteLength,
     0,
@@ -147,6 +150,8 @@ export async function runPdfiumBenchmark(
     outputBytes,
     msPerPage: pages.length > 0 ? totalMs / pages.length : 0,
     outputBytesPerPage: pages.length > 0 ? outputBytes / pages.length : 0,
+    concurrency,
+    pagesPerSecond: totalMs > 0 ? totalPages / (totalMs / 1000) : 0,
     pages: pages.map((page) => ({
       pageIndex: page.pageIndex,
       width: page.width,

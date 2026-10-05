@@ -167,6 +167,8 @@ export async function runPdfjsBenchmark(
     msPerPage: pageResults.length > 0 ? totalMs / pageResults.length : 0,
     outputBytesPerPage:
       pageResults.length > 0 ? outputBytes / pageResults.length : 0,
+    concurrency: 1,
+    pagesPerSecond: totalMs > 0 ? pageResults.length / (totalMs / 1000) : 0,
     pages: pageResults,
   };
 }

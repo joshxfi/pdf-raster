@@ -23,11 +23,27 @@ and settings:
 bun run benchmark
 ```
 
+Useful flags:
+
+- `--libs <list>` runs a comma-separated subset of `pdf-raster`,
+  `pdfjs-napi` and `pdfjs-node-canvas` (default: all three).
+- `--concurrency <n>` starts `n` simultaneous `convert()` calls per measured
+  run and reports pages per second. It applies to `pdf-raster` only; the
+  pdf.js backends always run at concurrency 1.
+
+```bash
+bun run benchmark -- --libs pdf-raster --output jpeg --concurrency 4
+```
+
 ## Default settings
 
 <Steps>
   <Step>
-    Use the valid fixture PDFs under `core/test/fixtures`.
+    Use two deterministic, generated US-letter fixtures written to
+    `benchmark/.fixtures/` (git-ignored): `text-20.pdf` (20 text pages) and
+    `mixed-10.pdf` (10 pages alternating text and a 1200x900 image). Pass PDF
+    paths explicitly to benchmark your own files. `bun run --cwd benchmark
+    fixtures` regenerates them.
   </Step>
   <Step>
     Render at `dpi=300` with `output=png`.
@@ -44,6 +60,9 @@ bun run benchmark
 </Callout>
 
 ## Sample output
+
+The sample numbers below were measured on the old tiny fixtures and will be
+refreshed against the new generated fixtures.
 
 ```text
 File: multi-page.pdf

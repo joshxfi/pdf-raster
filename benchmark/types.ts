@@ -1,5 +1,7 @@
 export type BenchOutputFormat = "jpeg" | "png" | "webp";
 
+export type BenchLibrary = "pdf-raster" | "pdfjs-napi" | "pdfjs-node-canvas";
+
 export type BenchOptions = {
   inputs: string[];
   dpi: number;
@@ -8,6 +10,8 @@ export type BenchOptions = {
   warmups: number;
   runs: number;
   json: boolean;
+  libs: BenchLibrary[];
+  concurrency: number;
 };
 
 export type BenchPageResult = {
@@ -32,6 +36,8 @@ export type BenchRunResult = {
   outputBytes: number;
   msPerPage: number;
   outputBytesPerPage: number;
+  concurrency: number;
+  pagesPerSecond: number;
   pages: BenchPageResult[];
 };
 
@@ -54,6 +60,8 @@ export type BenchSummary = {
   msPerPage: NumericSummary;
   outputBytes: NumericSummary;
   outputBytesPerPage: NumericSummary;
+  concurrency: number;
+  pagesPerSecond: NumericSummary;
   runs: BenchRunResult[];
 };
 
@@ -66,6 +74,8 @@ export type FileBenchmarkReport = {
     pages?: number[];
     warmups: number;
     runs: number;
+    libs: BenchLibrary[];
+    concurrency: number;
   };
   summaries: BenchSummary[];
 };
