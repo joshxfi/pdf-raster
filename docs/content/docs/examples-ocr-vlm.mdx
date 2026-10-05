@@ -7,8 +7,9 @@ These examples show how to pass converted page images into OCR and multimodal
 tools after rendering.
 
 <Callout type="info" title="Choose a format for the downstream tool">
-  PNG is the safest default. Use WebP or JPEG if you want smaller payloads and
-  the downstream tool accepts those formats.
+  PNG is the safest default. WebP is also lossless and smaller than PNG, but
+  slower to encode on large pages. JPEG is lossy and the smallest. Use WebP or
+  JPEG if the downstream tool accepts those formats.
 </Callout>
 
 ## Tesseract.js

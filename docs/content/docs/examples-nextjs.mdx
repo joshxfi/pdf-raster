@@ -8,6 +8,12 @@ description: The smallest correct Next.js server-side pattern for converting PDF
   not import it into the client or Edge runtime.
 </Callout>
 
+<Callout type="info" title="Next.js config">
+  Add `serverExternalPackages: ["pdf-raster"]` to your `next.config.ts` so the
+  native binding is not bundled. See
+  [Runtime and environment](/docs/runtime-and-environment).
+</Callout>
+
 This page shows only the server route. If you also want a client upload form
 and a preview grid that renders every returned page image, use the
 [full Next.js upload and preview example](/docs/examples-nextjs-full-flow).

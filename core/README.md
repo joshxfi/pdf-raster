@@ -8,8 +8,8 @@
 
 `pdf-raster` renders PDF pages into high-quality image buffers through
 a small, high-performance server-side API. Built with Rust and PDFium, it is
-roughly `4x–8x` faster than the included `pdfjs-dist` canvas backends in the
-current local benchmark sample.
+10.6–13.0x faster than `pdfjs-dist` + `@napi-rs/canvas` on 300 DPI letter
+pages in the repository benchmark.
 
 [**Documentation**](https://pdf-raster.omsimos.com/) | [**GitHub**](https://github.com/joshxfi/pdf-raster)
 
@@ -60,22 +60,36 @@ type ConvertedPage = {
 
 ## ⚡ Performance
 
-Tested on **Apple Silicon (M4)** against the included fixture PDFs at `300 DPI`.
+Measured on an **AMD Ryzen 7 7800X3D (16 threads), Linux x64**, at `300 DPI`
+(2550×3300 px letter pages) to PNG, one conversion at a time:
 
-- **pdf-raster**: ~0.86 ms/page
-- `pdfjs-dist + @napi-rs/canvas`: ~5.98 ms/page (`~6.9x` slower)
-- `pdfjs-dist + node-canvas`: ~7.19 ms/page (`~8.4x` slower)
+- **pdf-raster**: 16.91 ms/page on a 20-page text PDF, 25.94 ms/page on a
+  10-page PDF with embedded images
+- `pdfjs-dist + @napi-rs/canvas`: 220.45 / 276.26 ms/page (`13.0x` / `10.6x` slower)
+- `pdfjs-dist + node-canvas`: 328.14 ms/page on the text PDF (`19.4x` slower);
+  it fails on the PDF with embedded images
+- **pdf-raster throughput on the text PDF** (pages/s, 1 / 4 concurrent calls):
+  PNG 59.1 / 60.8, JPEG 48.4 / 58.7, WebP 53.8 / 56.6. In 0.2.0, JPEG is up to
+  ~8x faster and PNG/WebP about 2x faster than 0.1.x.
 
 > [!NOTE]
-> These are sample local benchmark results, not universal guarantees. Run
-> `bun run benchmark` in the repository if you want to compare on your own
-> machine.
+> These are local benchmark results, not universal guarantees. Run
+> `bun run benchmark` in the repository to compare on your own machine.
+
+## 🖥️ Server usage
+
+- Concurrent `convert()` calls are safe.
+- Rendering is serialized by a process-wide lock; encoding runs in parallel.
+- Peak rendered-frame memory is capped at about 8 rendered pages per process
+  (about 270 MB at 300 DPI US letter).
+- Set `maxPixels` when the DPI comes from clients.
+- Next.js needs `serverExternalPackages: ["pdf-raster"]` in `next.config.*`.
 
 ## 🌍 Runtime Support
 
-- **Server-side only**: Node.js and Bun.
+- **Server-side only**: Node.js 24+ and Bun.
 - **Targets**: macOS (x64/arm64), Linux (x64/arm64), Windows (x64/arm64).
-- **Format Support**: `png` (default), `jpeg`, `webp`.
+- **Format Support**: `png` (default, lossless), `jpeg` (lossy), `webp` (lossless).
 
 > [!CAUTION]
 > This package contains native bindings. It will **not** work in Browser bundles, React Client Components, or Edge runtimes.

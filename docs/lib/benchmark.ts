@@ -1,17 +1,17 @@
 export const benchmarkSummary = {
-  speedupRange: "4x-8x",
+  speedupRange: "10.6–13.0×",
   metrics: [
     {
-      label: "Multi-page",
-      ours: "1.72 ms",
-      napi: "11.96 ms",
-      nodeCanvas: "14.37 ms",
+      label: "Text (20 pages)",
+      ours: "16.91 ms",
+      napi: "220.45 ms",
+      nodeCanvas: "328.14 ms",
     },
     {
-      label: "Single-page",
-      ours: "1.29 ms",
-      napi: "5.81 ms",
-      nodeCanvas: "7.25 ms",
+      label: "Text + image (10 pages)",
+      ours: "25.94 ms",
+      napi: "276.26 ms",
+      nodeCanvas: "n/a",
     },
   ],
 };

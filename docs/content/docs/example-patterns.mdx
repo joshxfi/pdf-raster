@@ -36,8 +36,10 @@ Use this page as an index to the most common ways teams integrate the library.
     that renders every returned image.
   </Accordion>
   <Accordion title="I need smaller preview payloads">
-    Keep PNG as the default when quality matters most. Use WebP or JPEG when
-    you want to shrink response sizes for previews or downstream transport.
+    Keep PNG as the default when quality matters most. WebP is lossless and
+    smaller than PNG, but slower to encode on large pages. JPEG is lossy and the
+    smallest, so use it when you want to shrink response sizes for previews or
+    downstream transport.
   </Accordion>
   <Accordion title="I want to send pages into another system">
     Convert first, then pass the rendered page images into whatever comes next,
