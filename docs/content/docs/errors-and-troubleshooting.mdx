@@ -22,8 +22,10 @@ That lets you distinguish:
     a non-negative integer. Remember that page indices are zero-based.
   </Accordion>
   <Accordion title="I got INVALID_OPTIONS">
-    Check `dpi`, `pages`, and `outputFormat`. Supported output formats are
-    `png`, `jpeg`, and `webp`.
+    Check `dpi`, `pages`, `maxPixels`, and `outputFormat`. Supported output
+    formats are `png`, `jpeg`, and `webp`. A page that would exceed `maxPixels`,
+    or render wider or taller than 65535 px, also triggers this code. Lower the
+    `dpi` or raise `maxPixels`.
   </Accordion>
   <Accordion title="I got MALFORMED_PDF">
     PDFium could not parse the file. This usually means the uploaded bytes are
@@ -50,3 +52,4 @@ If you expose conversion through an API:
 - map stable error codes into HTTP status codes
 - log the native failure message on the server
 - avoid returning full native diagnostics to untrusted clients
+- set `maxPixels` (for example `100_000_000`) when the DPI comes from untrusted clients

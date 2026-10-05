@@ -74,6 +74,7 @@ await writeFile("output.webp", page.data);
 | `password`          | `string`                    | `-`     | Password for encrypted PDFs.                        |
 | `crop`              | `{ x, y, width, height }`   | `-`     | Crop rectangle in rendered image pixel coordinates. |
 | `renderAnnotations` | `boolean`                   | `true`  | Whether to render annotations and form data.        |
+| `maxPixels`         | `number`                    | `-`     | Optional upper bound on width × height per rendered page; larger renders throw `INVALID_OPTIONS`. Recommended for servers that accept a DPI from clients. |
 
 #### Return Value: `Promise<ConvertedPage[]>`
 

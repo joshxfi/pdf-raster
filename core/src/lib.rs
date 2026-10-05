@@ -30,6 +30,7 @@ pub struct NativeConvertOptions {
   pub password: Option<String>,
   pub crop: Option<NativeCrop>,
   pub render_annotations: Option<bool>,
+  pub max_pixels: Option<u32>,
 }
 
 #[napi(object)]
@@ -63,6 +64,7 @@ struct ResolvedConvertOptions {
   password: Option<String>,
   crop: Option<NativeCrop>,
   render_annotations: bool,
+  max_pixels: Option<u32>,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -214,6 +216,13 @@ fn normalize_options(options: NativeConvertOptions) -> std::result::Result<Resol
     }
   }
 
+  if options.max_pixels == Some(0) {
+    return Err(ConvertError::new(
+      ErrorCode::InvalidOptions,
+      "maxPixels must be greater than zero.",
+    ));
+  }
+
   Ok(ResolvedConvertOptions {
     pages: options.pages,
     dpi: options.dpi.unwrap_or(300),
@@ -221,6 +230,7 @@ fn normalize_options(options: NativeConvertOptions) -> std::result::Result<Resol
     password: options.password,
     crop: options.crop,
     render_annotations: options.render_annotations.unwrap_or(true),
+    max_pixels: options.max_pixels,
   })
 }
 
@@ -232,6 +242,7 @@ fn default_native_options() -> NativeConvertOptions {
     password: None,
     crop: None,
     render_annotations: None,
+    max_pixels: None,
   }
 }
 
@@ -340,8 +351,34 @@ fn render_pages(request: ConvertRequest) -> std::result::Result<Vec<NativeConver
     let page = document.pages().get(page_number).map_err(map_pdfium_error)?;
 
     let width = points_to_pixels(page.width().value, options.dpi);
+    // Mirror pdfium-render's bitmap sizing for a target-width render so the guard matches the real bitmap.
+    let height = f64::from((page.height().value * (width as f32 / page.width().value)).round().max(1.0));
+
+    if width > MAX_DIMENSION_PIXELS || height > MAX_DIMENSION_PIXELS {
+      return Err(ConvertError::new(
+        ErrorCode::InvalidOptions,
+        format!(
+          "Page {page_index} would render at {width:.0}x{height:.0} pixels at {} DPI, exceeding the maximum dimension of 65535 pixels. Lower the dpi.",
+          options.dpi
+        ),
+      ));
+    }
+
+    if let Some(max_pixels) = options.max_pixels {
+      let pixel_count = width * height;
+      if pixel_count > f64::from(max_pixels) {
+        return Err(ConvertError::new(
+          ErrorCode::InvalidOptions,
+          format!(
+            "Page {page_index} would render at {width:.0}x{height:.0} pixels ({pixel_count:.0} total) at {} DPI, exceeding maxPixels ({max_pixels}). Lower the dpi or raise maxPixels.",
+            options.dpi
+          ),
+        ));
+      }
+    }
+
     let render_config = PdfRenderConfig::new()
-      .set_target_width(i32::from(width))
+      .set_target_width(width as i32)
       .set_clear_color(PdfColor::WHITE)
       .render_annotations(options.render_annotations)
       .render_form_data(options.render_annotations);
@@ -372,9 +409,10 @@ fn render_pages(request: ConvertRequest) -> std::result::Result<Vec<NativeConver
   Ok(converted)
 }
 
-fn points_to_pixels(points: f32, dpi: u32) -> u16 {
-  let pixels = ((points / 72.0) * dpi as f32).round();
-  pixels.max(1.0).min(u16::MAX as f32) as u16
+const MAX_DIMENSION_PIXELS: f64 = 65_535.0;
+
+fn points_to_pixels(points: f32, dpi: u32) -> f64 {
+  f64::from(((points / 72.0) * dpi as f32).round().max(1.0))
 }
 
 fn map_pdfium_error(error: PdfiumError) -> ConvertError {

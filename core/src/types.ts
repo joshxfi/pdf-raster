@@ -16,6 +16,8 @@ export type ConvertOptions = {
   password?: string;
   crop?: Crop;
   renderAnnotations?: boolean;
+  /** Maximum pixels per rendered page (width × height). Unlimited when omitted. */
+  maxPixels?: number;
 };
 
 export type ConvertedPage = {
