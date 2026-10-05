@@ -61,7 +61,7 @@
     "test:bun": "bun test ./test",
     "test:node": "node ./test/node-smoke.ts",
     "test:concurrency": "bun ./test/concurrent-init.ts && node ./test/concurrent-init.ts",
-    "prepublishOnly": "bun run build && bun run prepare-npm-packages"
+    "prepublishOnly": "echo \"Publish via 'bun run release:publish' from the repository root.\" && exit 1"
   },
   "keywords": [
     "pdf",

@@ -88,6 +88,13 @@ mkdirSync(artifactDir, { recursive: true });
 const stagedBinaryPath = resolve(artifactDir, binaryFileName);
 const stagedPdfiumPath = resolve(artifactDir, targetFileName);
 
+if (existsSync(stagedBinaryPath)) {
+  console.log(
+    `keeping existing artifact ${stagedBinaryPath}; delete core/artifacts to restage`,
+  );
+  process.exit(0);
+}
+
 copyFileSync(sourceBinaryPath, stagedBinaryPath);
 copyFileSync(sourcePdfiumPath, stagedPdfiumPath);
 
