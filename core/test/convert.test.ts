@@ -289,6 +289,52 @@ describe("pdf-raster", () => {
     );
   });
 
+  test("frame slots are released on every error path", async () => {
+    const renderFailure = () =>
+      expectPdfError(
+        convert(multiPageFixture, { maxPixels: 1 }),
+        "INVALID_OPTIONS",
+      );
+    const workerFailure = () =>
+      expectPdfError(
+        convert(multiPageFixture, {
+          crop: { x: 100_000, y: 0, width: 100, height: 50 },
+        }),
+        "INVALID_CROP",
+      );
+
+    // Half the failing calls run one after another, half concurrently.
+    for (let index = 0; index < 10; index += 1) {
+      await renderFailure();
+      await workerFailure();
+    }
+    await Promise.all(
+      Array.from({ length: 10 }, () => [
+        renderFailure(),
+        workerFailure(),
+      ]).flat(),
+    );
+
+    // If any error path leaked a frame slot, this would wait forever.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error("Conversion deadlocked after error paths.")),
+        10_000,
+      );
+    });
+
+    try {
+      const pages = await Promise.race([
+        convert(multiPageFixture, { pages: [0, 1] }),
+        timeout,
+      ]);
+      expect(pages).toHaveLength(2);
+    } finally {
+      clearTimeout(timer);
+    }
+  });
+
   test("surfaces malformed pdf input cleanly", async () => {
     const malformedBytes = await readFile(malformedFixture);
 
