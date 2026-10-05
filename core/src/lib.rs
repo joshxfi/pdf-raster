@@ -10,6 +10,9 @@ use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::{Mutex, MutexGuard};
 
+// Matches the `image` crate JPEG default this replaces.
+const JPEG_QUALITY: u8 = 75;
+
 static PDFIUM: Mutex<Option<Pdfium>> = Mutex::new(None);
 
 #[derive(Debug)]
@@ -275,24 +278,51 @@ fn resolve_page_indices(page_count: usize, pages: Option<Vec<u32>>) -> std::resu
   }
 }
 
+fn encode_jpeg(rgba: &RgbaImage) -> std::result::Result<Vec<u8>, ConvertError> {
+  let width = u16::try_from(rgba.width()).map_err(|_| jpeg_dimension_error())?;
+  let height = u16::try_from(rgba.height()).map_err(|_| jpeg_dimension_error())?;
+  let mut bytes = Vec::new();
+  let mut encoder = jpeg_encoder::Encoder::new(&mut bytes, JPEG_QUALITY);
+  // Match the previous `image` encoder: no chroma subsampling (4:4:4).
+  encoder.set_sampling_factor(jpeg_encoder::SamplingFactor::F_1_1);
+  encoder
+    .encode(rgba.as_raw(), width, height, jpeg_encoder::ColorType::Rgba)
+    .map_err(|error| {
+      ConvertError::new(
+        ErrorCode::RenderError,
+        format!("Failed to encode jpeg output: {error}"),
+      )
+    })?;
+
+  Ok(bytes)
+}
+
+fn jpeg_dimension_error() -> ConvertError {
+  ConvertError::new(
+    ErrorCode::RenderError,
+    "Failed to encode jpeg output: image dimensions exceed 65535 pixels.".to_string(),
+  )
+}
+
 fn encode_image(image: &DynamicImage, output_format: OutputFormat) -> std::result::Result<Vec<u8>, ConvertError> {
+  if matches!(output_format, OutputFormat::Jpeg) {
+    // Pages render on opaque white, so the alpha channel is always 255 and is ignored by the encoder.
+    return match image {
+      DynamicImage::ImageRgba8(rgba) => encode_jpeg(rgba),
+      other => encode_jpeg(&other.to_rgba8()),
+    };
+  }
+
   let mut cursor = Cursor::new(Vec::new());
 
-  match output_format {
-    OutputFormat::Jpeg => {
-      DynamicImage::ImageRgb8(image.to_rgb8())
-        .write_to(&mut cursor, output_format.image_format())
-    }
-    OutputFormat::Png | OutputFormat::Webp => {
-      image.write_to(&mut cursor, output_format.image_format())
-    }
-  }
-  .map_err(|error| {
-    ConvertError::new(
-      ErrorCode::RenderError,
-      format!("Failed to encode {} output: {error}", output_format.as_str()),
-    )
-  })?;
+  image
+    .write_to(&mut cursor, output_format.image_format())
+    .map_err(|error| {
+      ConvertError::new(
+        ErrorCode::RenderError,
+        format!("Failed to encode {} output: {error}", output_format.as_str()),
+      )
+    })?;
 
   Ok(cursor.into_inner())
 }

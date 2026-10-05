@@ -9,6 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 image = { version = "0.25.8", default-features = false, features = ["jpeg", "png", "webp"] }
+jpeg-encoder = { version = "0.6.1", features = ["simd"] }
 napi = { version = "3.8.3", features = ["async", "napi8"] }
 napi-derive = "3.5.2"
 pdfium-render = { version = "0.8.37", features = ["sync"] }

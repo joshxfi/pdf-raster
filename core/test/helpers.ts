@@ -55,3 +55,38 @@ export function expectWebpSignature(data: Uint8Array): void {
     throw new Error("Expected a WebP signature.");
   }
 }
+
+export function parseJpegSampling(data: Uint8Array): {
+  width: number;
+  height: number;
+  samplingBytes: number[];
+} {
+  const jpeg = Buffer.from(data);
+  let offset = 2;
+
+  while (offset + 4 <= jpeg.length) {
+    if (jpeg[offset] !== 0xff) {
+      throw new Error(`Expected a JPEG marker at offset ${offset}.`);
+    }
+
+    const marker = jpeg[offset + 1];
+    const length = jpeg.readUInt16BE(offset + 2);
+
+    if (marker === 0xc0 || marker === 0xc2) {
+      const height = jpeg.readUInt16BE(offset + 5);
+      const width = jpeg.readUInt16BE(offset + 7);
+      const componentCount = jpeg[offset + 9];
+      const samplingBytes: number[] = [];
+
+      for (let index = 0; index < componentCount; index += 1) {
+        samplingBytes.push(jpeg[offset + 11 + index * 3]);
+      }
+
+      return { width, height, samplingBytes };
+    }
+
+    offset += 2 + length;
+  }
+
+  throw new Error("No JPEG SOF0/SOF2 marker found.");
+}

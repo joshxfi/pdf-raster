@@ -6,6 +6,7 @@ import {
   expectJpegSignature,
   expectWebpSignature,
   fixturePath,
+  parseJpegSampling,
   parsePngDimensions,
 } from "./helpers";
 
@@ -116,6 +117,30 @@ describe("pdf-raster", () => {
     expectPageShape(pages[0], 0, 300);
     expect(pages[0].mimeType).toBe("image/jpeg");
     expectJpegSignature(pages[0].data);
+  });
+
+  test("jpeg output keeps 4:4:4 chroma sampling", async () => {
+    const pages = await convert(singlePageFixture, {
+      pages: [0],
+      outputFormat: "jpeg",
+    });
+
+    const { samplingBytes } = parseJpegSampling(pages[0].data);
+
+    expect(samplingBytes).toHaveLength(3);
+    expect(samplingBytes.every((byte) => byte === 0x11)).toBe(true);
+  });
+
+  test("jpeg output decodes to the reported dimensions", async () => {
+    const pages = await convert(singlePageFixture, {
+      pages: [0],
+      outputFormat: "jpeg",
+    });
+
+    const { width, height } = parseJpegSampling(pages[0].data);
+
+    expect(width).toBe(pages[0].width);
+    expect(height).toBe(pages[0].height);
   });
 
   test("supports WebP output while keeping dimensions and metadata", async () => {
