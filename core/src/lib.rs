@@ -10,7 +10,7 @@ use std::io::Cursor;
 use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::{channel, sync_channel};
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Condvar, Mutex, MutexGuard};
 
 // Matches the `image` crate JPEG default this replaces.
 const JPEG_QUALITY: u8 = 75;
@@ -355,9 +355,50 @@ fn crop_image(image: RgbaImage, crop: &NativeCrop) -> std::result::Result<RgbaIm
 // Encoder threads only ever receive owned images; PDFium is touched solely by the thread holding the lock.
 const MAX_ENCODER_THREADS: usize = 4;
 
+/// Process-wide cap on rendered page frames that exist at once, across all concurrent conversions.
+///
+/// A frame is the full RGBA bitmap of one rendered page, from the moment it is rendered until its encoder
+/// finishes with it. The cap bounds peak frame memory to about 8 rendered pages in total (roughly 270 MB at
+/// 300 DPI US letter), independent of how many conversions run at the same time. Without it, every call would
+/// release the PDFium lock after rendering and memory would grow with the number of concurrent callers.
+const MAX_FRAMES_IN_FLIGHT: usize = MAX_ENCODER_THREADS * 2;
+
+struct FrameSlots {
+  available: Mutex<usize>,
+  released: Condvar,
+}
+
+static ENCODE_SLOTS: FrameSlots = FrameSlots {
+  available: Mutex::new(MAX_FRAMES_IN_FLIGHT),
+  released: Condvar::new(),
+};
+
+/// Holds one frame slot; the slot is returned when this value is dropped.
+struct FrameSlot;
+
+fn acquire_frame_slot() -> FrameSlot {
+  let mut available = ENCODE_SLOTS.available.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+
+  while *available == 0 {
+    available = ENCODE_SLOTS.released.wait(available).unwrap_or_else(|poisoned| poisoned.into_inner());
+  }
+
+  *available -= 1;
+  FrameSlot
+}
+
+impl Drop for FrameSlot {
+  fn drop(&mut self) {
+    let mut available = ENCODE_SLOTS.available.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    *available += 1;
+    ENCODE_SLOTS.released.notify_one();
+  }
+}
+
 struct RenderedPage {
   position: usize,
   image: RgbaImage,
+  slot: FrameSlot,
 }
 
 struct EncodedPage {
@@ -510,11 +551,14 @@ fn render_pages(request: ConvertRequest) -> std::result::Result<Vec<NativeConver
               break;
             };
 
-            let result = crop_and_encode(page.image, options);
+            let RenderedPage { position, image, slot } = page;
+            let result = crop_and_encode(image, options);
+            // The RGBA frame is freed once `crop_and_encode` returns, so hand its slot back right away.
+            drop(slot);
             if result.is_err() {
               failed.store(true, Ordering::Relaxed);
             }
-            if result_sender.send((page.position, result)).is_err() {
+            if result_sender.send((position, result)).is_err() {
               break;
             }
           }
@@ -528,9 +572,13 @@ fn render_pages(request: ConvertRequest) -> std::result::Result<Vec<NativeConver
           break;
         }
 
+        // Waiting here while holding the PDFium lock cannot deadlock: slots are freed by encoders, which never
+        // need the lock.
+        let slot = acquire_frame_slot();
+
         match render_one(&document, page_index, &options) {
           Ok(image) => {
-            if sender.send(RenderedPage { position, image }).is_err() {
+            if sender.send(RenderedPage { position, image, slot }).is_err() {
               break;
             }
           }
