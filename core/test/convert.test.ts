@@ -278,4 +278,26 @@ describe("pdf-raster", () => {
       );
     }
   });
+
+  test("maxPixels guard matches the rendered size of rotated pages", async () => {
+    const original = (await readFile(singlePageFixture)).toString("latin1");
+    const marker = "/MediaBox [0 0 200 100]";
+    expect(original).toContain(marker);
+    const rotated = Buffer.from(
+      original.replace(marker, `/Rotate 90 ${marker}`),
+      "latin1",
+    );
+
+    for (const dpi of [150, 300]) {
+      const [page] = await convert(rotated, { dpi });
+      const actual = page.width * page.height;
+
+      const pages = await convert(rotated, { dpi, maxPixels: actual });
+      expect(pages).toHaveLength(1);
+      await expectPdfError(
+        convert(rotated, { dpi, maxPixels: actual - 1 }),
+        "INVALID_OPTIONS",
+      );
+    }
+  });
 });

@@ -351,7 +351,8 @@ fn render_pages(request: ConvertRequest) -> std::result::Result<Vec<NativeConver
     let page = document.pages().get(page_number).map_err(map_pdfium_error)?;
 
     let width = points_to_pixels(page.width().value, options.dpi);
-    let height = points_to_pixels(page.height().value, options.dpi);
+    // Mirror pdfium-render's bitmap sizing for a target-width render so the guard matches the real bitmap.
+    let height = f64::from((page.height().value * (width as f32 / page.width().value)).round().max(1.0));
 
     if width > MAX_DIMENSION_PIXELS || height > MAX_DIMENSION_PIXELS {
       return Err(ConvertError::new(
