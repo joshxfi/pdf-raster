@@ -57,6 +57,8 @@ export function summarizeRuns(runs: BenchRunResult[]): BenchSummary {
     msPerPage: summarize(runs.map((run) => run.msPerPage)),
     outputBytes: summarize(runs.map((run) => run.outputBytes)),
     outputBytesPerPage: summarize(runs.map((run) => run.outputBytesPerPage)),
+    concurrency: first.concurrency,
+    pagesPerSecond: summarize(runs.map((run) => run.pagesPerSecond)),
     runs,
   };
 }
@@ -117,7 +119,7 @@ export function printHumanReport(report: BenchmarkReport): void {
       `File: ${basename(file.inputPath)} (${resolve(file.inputPath)})`,
     );
     console.log(
-      `Settings: dpi=${file.settings.dpi}, output=${file.settings.outputFormat}, pages=${file.settings.pages?.join(",") ?? "all"}, warmups=${file.settings.warmups}, runs=${file.settings.runs}`,
+      `Settings: dpi=${file.settings.dpi}, output=${file.settings.outputFormat}, pages=${file.settings.pages?.join(",") ?? "all"}, warmups=${file.settings.warmups}, runs=${file.settings.runs}, libs=${file.settings.libs.join(",")}, concurrency=${file.settings.concurrency}`,
     );
     console.log(`Input size: ${formatBytes(file.inputBytes)}`);
 
@@ -137,6 +139,10 @@ export function printHumanReport(report: BenchmarkReport): void {
           ? { avgEncode: formatOptionalMs(summary.encodeMs) }
           : {}),
         avgPerPage: formatMs(summary.msPerPage.avg),
+        pagesPerSecond:
+          summary.library === "pdf-raster"
+            ? summary.pagesPerSecond.avg.toFixed(1)
+            : "n/a",
         avgBytes: formatBytes(summary.outputBytes.avg),
       }),
     );
@@ -148,6 +154,7 @@ export function printHumanReport(report: BenchmarkReport): void {
       ...(showRaster ? { avgRaster: "Avg raster" } : {}),
       ...(showEncode ? { avgEncode: "Avg encode" } : {}),
       avgPerPage: "Avg/page",
+      pagesPerSecond: "Pages/s",
       avgBytes: "Avg bytes",
     } satisfies Record<string, string>;
     const columns = Object.entries(headers) as Array<[string, string]>;
@@ -180,6 +187,11 @@ export function printHumanReport(report: BenchmarkReport): void {
     const pdfjsComparisons = file.summaries.filter(
       (summary) => summary.library === "pdfjs-dist",
     );
+
+    if (!ours && pdfjsComparisons.length > 0) {
+      console.log("");
+      console.log("Relative speed: n/a (pdf-raster not selected)");
+    }
 
     if (ours && pdfjsComparisons.length > 0) {
       console.log("");

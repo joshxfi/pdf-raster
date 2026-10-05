@@ -4,6 +4,7 @@
   "type": "module",
   "scripts": {
     "benchmark": "bun run ./index.ts",
+    "fixtures": "bun ./fixtures.ts",
     "check-types": "tsc --noEmit",
     "clean": "bun ../scripts/clean.ts .turbo"
   },
