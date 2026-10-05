@@ -8,9 +8,9 @@ use napi_derive::napi;
 use pdfium_render::prelude::*;
 use std::io::Cursor;
 use std::path::PathBuf;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Mutex, MutexGuard};
 
-static PDFIUM: OnceLock<Mutex<Pdfium>> = OnceLock::new();
+static PDFIUM: Mutex<Option<Pdfium>> = Mutex::new(None);
 
 #[derive(Debug)]
 #[napi(object)]
@@ -163,27 +163,25 @@ impl From<ConvertError> for Error {
   }
 }
 
-fn get_pdfium(pdfium_library_path: Option<&str>) -> std::result::Result<&'static Mutex<Pdfium>, ConvertError> {
-  if let Some(pdfium) = PDFIUM.get() {
-    return Ok(pdfium);
-  }
-
-  let bindings = bind_pdfium(pdfium_library_path).map_err(|error| {
+fn lock_pdfium(pdfium_library_path: Option<&str>) -> std::result::Result<MutexGuard<'static, Option<Pdfium>>, ConvertError> {
+  let mut guard = PDFIUM.lock().map_err(|_| {
     ConvertError::new(
-      ErrorCode::PdfiumUnavailable,
-      format!("Unable to initialize PDFium: {error}"),
+      ErrorCode::RenderError,
+      "The PDFium renderer lock was poisoned by a prior panic.",
     )
   })?;
-  let pdfium = Pdfium::new(bindings);
 
-  let _ = PDFIUM.set(Mutex::new(pdfium));
+  if guard.is_none() {
+    let bindings = bind_pdfium(pdfium_library_path).map_err(|error| {
+      ConvertError::new(
+        ErrorCode::PdfiumUnavailable,
+        format!("Unable to initialize PDFium: {error}"),
+      )
+    })?;
+    *guard = Some(Pdfium::new(bindings));
+  }
 
-  PDFIUM.get().ok_or_else(|| {
-    ConvertError::new(
-      ErrorCode::PdfiumUnavailable,
-      "PDFium initialization completed but no global binding was stored.",
-    )
-  })
+  Ok(guard)
 }
 
 fn bind_pdfium(pdfium_library_path: Option<&str>) -> std::result::Result<Box<dyn PdfiumLibraryBindings>, PdfiumError> {
@@ -315,11 +313,11 @@ fn render_pages(request: ConvertRequest) -> std::result::Result<Vec<NativeConver
   let options = normalize_options(request.options)?;
   let password = options.password.as_deref();
 
-  let pdfium_lock = get_pdfium(request.pdfium_library_path.as_deref())?;
-  let pdfium = pdfium_lock.lock().map_err(|_| {
+  let pdfium_guard = lock_pdfium(request.pdfium_library_path.as_deref())?;
+  let pdfium = pdfium_guard.as_ref().ok_or_else(|| {
     ConvertError::new(
-      ErrorCode::RenderError,
-      "The PDFium renderer lock was poisoned by a prior panic.",
+      ErrorCode::PdfiumUnavailable,
+      "PDFium initialization completed but no global binding was stored.",
     )
   })?;
 
