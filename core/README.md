@@ -68,6 +68,10 @@ Measured on an **AMD Ryzen 7 7800X3D (16 threads), Linux x64**, at `300 DPI`
 - `pdfjs-dist + @napi-rs/canvas`: 220.45 / 276.26 ms/page (`13.0x` / `10.6x` slower)
 - `pdfjs-dist + node-canvas`: 328.14 ms/page on the text PDF (`19.4x` slower);
   it fails on the PDF with embedded images
+- **Output size**: PNG favours speed (fast compression) and is about 3x larger
+  than `pdfjs-dist` PNGs. WebP is lossless and was the smallest on the text PDF
+  (about 0.95 MB/page vs about 3.0 MB PNG and about 1.2 MB JPEG); JPEG was the
+  smallest on the image-heavy PDF (about 1.1 MB vs about 2.3 MB WebP).
 - **pdf-raster throughput on the text PDF** (pages/s, 1 / 4 concurrent calls):
   PNG 59.1 / 60.8, JPEG 48.4 / 58.7, WebP 53.8 / 56.6. In 0.2.0, JPEG is up to
   ~8x faster and PNG/WebP about 2x faster than 0.1.x.

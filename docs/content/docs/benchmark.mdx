@@ -94,6 +94,23 @@ Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 10.65x
 embedded image (`Image or Canvas expected`). The benchmark records the failure
 and continues with the other backends.
 
+## Output size
+
+The `Avg bytes` column is the total output per run. pdf-raster's PNG output
+favours speed (fast compression), so its files are about 3x larger than the
+PNGs `pdfjs-dist` produces (59.7 MB vs 20.8 MB for the 20 `text-20` pages).
+
+Average output size per page for pdf-raster at 300 DPI:
+
+| Format        | text-20 | mixed-10 |
+| :------------ | :------ | :------- |
+| PNG           | 3055 KB | 5441 KB  |
+| WebP (lossless) | 969 KB  | 2348 KB  |
+| JPEG (q75)    | 1224 KB | 1121 KB  |
+
+WebP is lossless and smallest on the text PDF; JPEG is lossy and smallest on
+the image-heavy PDF.
+
 ## Throughput and concurrency
 
 `--concurrency <n>` starts `n` simultaneous `convert()` calls per measured run
