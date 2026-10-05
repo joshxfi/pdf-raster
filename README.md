@@ -106,6 +106,14 @@ and a 1200×900 image).
 <sup>1</sup> `pdfjs-dist + node-canvas` fails on `mixed-10.pdf` (`Image or Canvas
 expected`), so it is skipped for that fixture.
 
+> [!NOTE]
+> pdf-raster's PNG output favours speed (fast compression), so its files are
+> about 3x larger than the PNGs `pdfjs-dist` produces (59.7 MB vs 20.8 MB for
+> the 20 `text-20` pages). When size matters, WebP is still lossless and was
+> the smallest output on the text PDF (about 0.95 MB/page vs about 3.0 MB for
+> PNG and about 1.2 MB for JPEG), while JPEG was the smallest on the
+> image-heavy PDF (about 1.1 MB/page vs about 2.3 MB for WebP).
+
 **pdf-raster throughput by format** (`text-20.pdf`, pages per second):
 
 | Format | 1 concurrent `convert()` | 4 concurrent `convert()` calls |
