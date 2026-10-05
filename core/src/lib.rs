@@ -8,7 +8,9 @@ use napi_derive::napi;
 use pdfium_render::prelude::*;
 use std::io::Cursor;
 use std::path::PathBuf;
-use std::sync::{Mutex, MutexGuard};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::mpsc::{channel, sync_channel};
+use std::sync::{Arc, Mutex, MutexGuard};
 
 // Matches the `image` crate JPEG default this replaces.
 const JPEG_QUALITY: u8 = 75;
@@ -350,93 +352,241 @@ fn crop_image(image: RgbaImage, crop: &NativeCrop) -> std::result::Result<RgbaIm
   Ok(imageops::crop_imm(&image, crop.x, crop.y, crop.width, crop.height).to_image())
 }
 
-fn render_pages(request: ConvertRequest) -> std::result::Result<Vec<NativeConvertedPage>, ConvertError> {
-  let options = normalize_options(request.options)?;
-  let password = options.password.as_deref();
+// Encoder threads only ever receive owned images; PDFium is touched solely by the thread holding the lock.
+const MAX_ENCODER_THREADS: usize = 4;
 
-  let pdfium_guard = lock_pdfium(request.pdfium_library_path.as_deref())?;
-  let pdfium = pdfium_guard.as_ref().ok_or_else(|| {
+struct RenderedPage {
+  position: usize,
+  image: RgbaImage,
+}
+
+struct EncodedPage {
+  data: Vec<u8>,
+  width: u32,
+  height: u32,
+}
+
+type EncodeResult = std::result::Result<EncodedPage, ConvertError>;
+
+fn render_one(document: &PdfDocument, page_index: usize, options: &ResolvedConvertOptions) -> std::result::Result<RgbaImage, ConvertError> {
+  let page_number = u16::try_from(page_index).map_err(|_| {
     ConvertError::new(
-      ErrorCode::PdfiumUnavailable,
-      "PDFium initialization completed but no global binding was stored.",
+      ErrorCode::InvalidPageIndex,
+      format!("Page index {page_index} could not be represented by PDFium."),
     )
   })?;
+  let page = document.pages().get(page_number).map_err(map_pdfium_error)?;
 
-  let document = match request.input {
-    InputSource::Path(path) => pdfium.load_pdf_from_file(&path, password).map_err(map_pdfium_error)?,
-    InputSource::Bytes(bytes) => pdfium.load_pdf_from_byte_vec(bytes, password).map_err(map_pdfium_error)?,
-  };
+  let width = points_to_pixels(page.width().value, options.dpi);
+  // Mirror pdfium-render's bitmap sizing for a target-width render so the guard matches the real bitmap.
+  let height = f64::from((page.height().value * (width as f32 / page.width().value)).round().max(1.0));
 
-  let page_count = usize::from(document.pages().len());
-  let target_pages = resolve_page_indices(page_count, options.pages)?;
-  let mut converted = Vec::with_capacity(target_pages.len());
+  if width > MAX_DIMENSION_PIXELS || height > MAX_DIMENSION_PIXELS {
+    return Err(ConvertError::new(
+      ErrorCode::InvalidOptions,
+      format!(
+        "Page {page_index} would render at {width:.0}x{height:.0} pixels at {} DPI, exceeding the maximum dimension of 65535 pixels. Lower the dpi.",
+        options.dpi
+      ),
+    ));
+  }
 
-  for page_index in target_pages {
-    let page_number = u16::try_from(page_index).map_err(|_| {
-      ConvertError::new(
-        ErrorCode::InvalidPageIndex,
-        format!("Page index {page_index} could not be represented by PDFium."),
-      )
-    })?;
-    let page = document.pages().get(page_number).map_err(map_pdfium_error)?;
-
-    let width = points_to_pixels(page.width().value, options.dpi);
-    // Mirror pdfium-render's bitmap sizing for a target-width render so the guard matches the real bitmap.
-    let height = f64::from((page.height().value * (width as f32 / page.width().value)).round().max(1.0));
-
-    if width > MAX_DIMENSION_PIXELS || height > MAX_DIMENSION_PIXELS {
+  if let Some(max_pixels) = options.max_pixels {
+    let pixel_count = width * height;
+    if pixel_count > f64::from(max_pixels) {
       return Err(ConvertError::new(
         ErrorCode::InvalidOptions,
         format!(
-          "Page {page_index} would render at {width:.0}x{height:.0} pixels at {} DPI, exceeding the maximum dimension of 65535 pixels. Lower the dpi.",
+          "Page {page_index} would render at {width:.0}x{height:.0} pixels ({pixel_count:.0} total) at {} DPI, exceeding maxPixels ({max_pixels}). Lower the dpi or raise maxPixels.",
           options.dpi
         ),
       ));
     }
+  }
 
-    if let Some(max_pixels) = options.max_pixels {
-      let pixel_count = width * height;
-      if pixel_count > f64::from(max_pixels) {
-        return Err(ConvertError::new(
-          ErrorCode::InvalidOptions,
-          format!(
-            "Page {page_index} would render at {width:.0}x{height:.0} pixels ({pixel_count:.0} total) at {} DPI, exceeding maxPixels ({max_pixels}). Lower the dpi or raise maxPixels.",
-            options.dpi
-          ),
+  let render_config = PdfRenderConfig::new()
+    .set_target_width(width as i32)
+    .set_clear_color(PdfColor::WHITE)
+    .render_annotations(options.render_annotations)
+    .render_form_data(options.render_annotations);
+
+  let bitmap = page
+    .render_with_config(&render_config)
+    .map_err(map_pdfium_error)?;
+
+  Ok(bitmap.as_image().into_rgba8())
+}
+
+fn crop_and_encode(mut image: RgbaImage, options: &ResolvedConvertOptions) -> EncodeResult {
+  if let Some(crop) = &options.crop {
+    image = crop_image(image, crop)?;
+  }
+
+  let dynamic_image = DynamicImage::ImageRgba8(image);
+  let data = encode_image(&dynamic_image, options.output_format)?;
+
+  Ok(EncodedPage {
+    data,
+    width: dynamic_image.width(),
+    height: dynamic_image.height(),
+  })
+}
+
+fn render_pages(request: ConvertRequest) -> std::result::Result<Vec<NativeConvertedPage>, ConvertError> {
+  let mut options = normalize_options(request.options)?;
+  let page_filter = options.pages.take();
+  let options = options;
+  let password = options.password.as_deref();
+
+  let (sender, receiver) = sync_channel::<RenderedPage>(MAX_ENCODER_THREADS);
+  let receiver = Arc::new(Mutex::new(receiver));
+  let (result_sender, result_receiver) = channel::<(usize, EncodeResult)>();
+  let failed = AtomicBool::new(false);
+
+  let mut render_error: Option<(usize, ConvertError)> = None;
+  let mut setup_error: Option<ConvertError> = None;
+  let mut target_pages: Vec<usize> = Vec::new();
+  let mut encoded: Vec<(usize, EncodeResult)> = Vec::new();
+
+  std::thread::scope(|scope| {
+    // Everything that touches PDFium lives in this block, on the calling thread. Leaving the block drops the
+    // document and then the lock guard, so the lock is released before we wait for the encoders to finish.
+    {
+      let pdfium_guard = match lock_pdfium(request.pdfium_library_path.as_deref()) {
+        Ok(guard) => guard,
+        Err(error) => {
+          setup_error = Some(error);
+          return;
+        }
+      };
+      let Some(pdfium) = pdfium_guard.as_ref() else {
+        setup_error = Some(ConvertError::new(
+          ErrorCode::PdfiumUnavailable,
+          "PDFium initialization completed but no global binding was stored.",
         ));
+        return;
+      };
+
+      let loaded = match request.input {
+        InputSource::Path(path) => pdfium.load_pdf_from_file(&path, password),
+        InputSource::Bytes(bytes) => pdfium.load_pdf_from_byte_vec(bytes, password),
+      };
+      let document = match loaded {
+        Ok(document) => document,
+        Err(error) => {
+          setup_error = Some(map_pdfium_error(error));
+          return;
+        }
+      };
+
+      let page_count = usize::from(document.pages().len());
+      target_pages = match resolve_page_indices(page_count, page_filter) {
+        Ok(pages) => pages,
+        Err(error) => {
+          setup_error = Some(error);
+          return;
+        }
+      };
+
+      let workers = target_pages
+        .len()
+        .min(MAX_ENCODER_THREADS)
+        .min(std::thread::available_parallelism().map(|count| count.get()).unwrap_or(1))
+        .max(1);
+
+      for _ in 0..workers {
+        let receiver = Arc::clone(&receiver);
+        let result_sender = result_sender.clone();
+        let failed = &failed;
+        let options = &options;
+
+        scope.spawn(move || {
+          loop {
+            let next = match receiver.lock() {
+              Ok(guard) => guard.recv(),
+              Err(_) => break,
+            };
+            let Ok(page) = next else {
+              break;
+            };
+
+            let result = crop_and_encode(page.image, options);
+            if result.is_err() {
+              failed.store(true, Ordering::Relaxed);
+            }
+            if result_sender.send((page.position, result)).is_err() {
+              break;
+            }
+          }
+        });
+      }
+      // Only the workers hold the receiver now, so if they all stop, `send` fails instead of blocking forever.
+      drop(receiver);
+
+      for (position, page_index) in target_pages.iter().copied().enumerate() {
+        if failed.load(Ordering::Relaxed) {
+          break;
+        }
+
+        match render_one(&document, page_index, &options) {
+          Ok(image) => {
+            if sender.send(RenderedPage { position, image }).is_err() {
+              break;
+            }
+          }
+          Err(error) => {
+            render_error = Some((position, error));
+            break;
+          }
+        }
       }
     }
 
-    let render_config = PdfRenderConfig::new()
-      .set_target_width(width as i32)
-      .set_clear_color(PdfColor::WHITE)
-      .render_annotations(options.render_annotations)
-      .render_form_data(options.render_annotations);
-
-    let bitmap = page
-      .render_with_config(&render_config)
-      .map_err(map_pdfium_error)?;
-
-    let mut image = bitmap.as_image().into_rgba8();
-
-    if let Some(crop) = &options.crop {
-      image = crop_image(image, crop)?;
+    // The lock is released. Close the queue so the workers finish, then collect their results.
+    drop(sender);
+    drop(result_sender);
+    for item in result_receiver {
+      encoded.push(item);
     }
+  });
 
-    let dynamic_image = DynamicImage::ImageRgba8(image);
-    let image_bytes = encode_image(&dynamic_image, options.output_format)?;
-
-    converted.push(NativeConvertedPage {
-      page_index: page_index as u32,
-      data: image_bytes.into(),
-      mime_type: options.output_format.mime_type().to_owned(),
-      width: dynamic_image.width(),
-      height: dynamic_image.height(),
-      dpi: options.dpi,
-    });
+  if let Some(error) = setup_error {
+    return Err(error);
   }
 
-  Ok(converted)
+  // Match the old sequential loop: the failure with the lowest page position wins.
+  encoded.sort_by_key(|(position, _)| *position);
+  let mut first_error = render_error;
+  let mut converted = Vec::with_capacity(encoded.len());
+
+  for (position, result) in encoded {
+    match result {
+      Ok(page) => converted.push((position, page)),
+      Err(error) => {
+        if first_error.as_ref().is_none_or(|(error_position, _)| position < *error_position) {
+          first_error = Some((position, error));
+        }
+      }
+    }
+  }
+
+  if let Some((_, error)) = first_error {
+    return Err(error);
+  }
+
+  Ok(
+    converted
+      .into_iter()
+      .map(|(position, page)| NativeConvertedPage {
+        page_index: target_pages[position] as u32,
+        data: page.data.into(),
+        mime_type: options.output_format.mime_type().to_owned(),
+        width: page.width,
+        height: page.height,
+        dpi: options.dpi,
+      })
+      .collect(),
+  )
 }
 
 const MAX_DIMENSION_PIXELS: f64 = 65_535.0;
