@@ -1,4 +1,5 @@
 import { existsSync, statSync } from "node:fs";
+import { basename } from "node:path";
 import { parseArgs } from "node:util";
 
 import { getDefaultBenchmarkInputs, runPdfiumBenchmark } from "./pdfium";
@@ -9,6 +10,7 @@ import {
 } from "./pdfjs-node-canvas";
 import { createReport, printHumanReport, summarizeRuns } from "./report";
 import type {
+  BenchFailure,
   BenchLibrary,
   BenchOptions,
   BenchRunResult,
@@ -208,36 +210,50 @@ async function benchmarkFile(
 ): Promise<FileBenchmarkReport> {
   const inputBytes = statSync(inputPath).size;
   const summaries: BenchSummary[] = [];
-
-  if (options.libs.includes("pdf-raster")) {
-    summaries.push(
-      summarizeRuns(
-        await measureLibrary(runPdfiumBenchmark, inputPath, options),
-      ),
-    );
-  }
+  const failures: BenchFailure[] = [];
 
   // pdf.js backends always run at concurrency 1.
   const pdfjsOptions: BenchOptions = { ...options, concurrency: 1 };
+  const targets: Array<{
+    library: BenchLibrary;
+    run: (inputPath: string, options: BenchOptions) => Promise<BenchRunResult>;
+    options: BenchOptions;
+  }> = [
+    { library: "pdf-raster", run: runPdfiumBenchmark, options },
+    {
+      library: "pdfjs-napi",
+      run: runPdfjsNapiBenchmark,
+      options: pdfjsOptions,
+    },
+    {
+      library: "pdfjs-node-canvas",
+      run: runPdfjsNodeCanvasBenchmark,
+      options: pdfjsOptions,
+    },
+  ];
 
-  if (options.libs.includes("pdfjs-napi")) {
-    summaries.push(
-      summarizeRuns(
-        await measureLibrary(runPdfjsNapiBenchmark, inputPath, pdfjsOptions),
-      ),
-    );
-  }
+  for (const target of targets) {
+    if (!options.libs.includes(target.library)) {
+      continue;
+    }
 
-  if (options.libs.includes("pdfjs-node-canvas")) {
-    summaries.push(
-      summarizeRuns(
-        await measureLibrary(
-          runPdfjsNodeCanvasBenchmark,
-          inputPath,
-          pdfjsOptions,
+    try {
+      summaries.push(
+        summarizeRuns(
+          await measureLibrary(target.run, inputPath, target.options),
         ),
-      ),
-    );
+      );
+    } catch (error) {
+      if (target.library === "pdf-raster") {
+        throw error;
+      }
+
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(
+        `Warning: ${target.library} failed on ${basename(inputPath)}: ${message}`,
+      );
+      failures.push({ library: target.library, message });
+    }
   }
 
   return {
@@ -253,6 +269,7 @@ async function benchmarkFile(
       concurrency: options.concurrency,
     },
     summaries,
+    ...(failures.length > 0 ? { failures } : {}),
   };
 }
 

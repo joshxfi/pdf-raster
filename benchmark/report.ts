@@ -181,6 +181,10 @@ export function printHumanReport(report: BenchmarkReport): void {
       );
     }
 
+    for (const failure of file.failures ?? []) {
+      console.log(`skipped: ${failure.library} (${failure.message})`);
+    }
+
     const ours = file.summaries.find(
       (summary) => summary.library === "pdf-raster",
     );
