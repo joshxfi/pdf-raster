@@ -143,6 +143,53 @@ describe("pdf-raster", () => {
     expect(height).toBe(pages[0].height);
   });
 
+  test("multi-page output order and duplicates are preserved", async () => {
+    const pages = await convert(multiPageFixture, { pages: [1, 0, 1] });
+
+    expect(pages.map((page) => page.pageIndex)).toEqual([1, 0, 1]);
+    expect(Buffer.compare(pages[0].data, pages[2].data)).toBe(0);
+  });
+
+  test("parallel encoding is deterministic", async () => {
+    for (const outputFormat of ["png", "jpeg", "webp"] as const) {
+      const reference = await convert(multiPageFixture, { outputFormat });
+      const runs = await Promise.all(
+        Array.from({ length: 6 }, () =>
+          convert(multiPageFixture, { outputFormat }),
+        ),
+      );
+
+      for (const run of runs) {
+        expect(run).toHaveLength(reference.length);
+        run.forEach((page, index) => {
+          expect(page.pageIndex).toBe(reference[index].pageIndex);
+          expect(Buffer.compare(page.data, reference[index].data)).toBe(0);
+        });
+      }
+    }
+  });
+
+  test("encoding does not block other conversions", async () => {
+    // Many repeated pages at a high DPI make encoding dominate the big call.
+    const bigPages = Array.from({ length: 60 }, (_, index) => index % 2);
+    const big = convert(multiPageFixture, {
+      pages: bigPages,
+      dpi: 1200,
+      outputFormat: "jpeg",
+    }).then(() => "big");
+
+    // Let the big call take the PDFium lock first.
+    await new Promise((resolve) => setTimeout(resolve, 20));
+
+    const small = convert(singlePageFixture, {
+      pages: [0],
+      outputFormat: "png",
+    }).then(() => "small");
+
+    expect(await Promise.race([big, small])).toBe("small");
+    await big;
+  });
+
   test("supports WebP output while keeping dimensions and metadata", async () => {
     const pages = await convert(singlePageFixture, {
       pages: [0],
