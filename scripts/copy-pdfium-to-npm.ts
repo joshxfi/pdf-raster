@@ -18,7 +18,9 @@ const fileNameByTarget = {
   "darwin-arm64": "libpdfium.dylib",
   "darwin-x64": "libpdfium.dylib",
   "linux-arm64-gnu": "libpdfium.so",
+  "linux-arm64-musl": "libpdfium.so",
   "linux-x64-gnu": "libpdfium.so",
+  "linux-x64-musl": "libpdfium.so",
   "win32-arm64-msvc": "pdfium.dll",
   "win32-x64-msvc": "pdfium.dll",
 } as const;

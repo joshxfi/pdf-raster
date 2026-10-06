@@ -27,8 +27,9 @@ bun add pdf-raster
 ```
 
 pdf-raster needs Node.js 24 or newer, or Bun. Prebuilt binaries cover macOS,
-Linux with glibc and Windows, on x64 and arm64. Each platform package includes
-its own PDFium library, so there is nothing else to install.
+Linux (glibc and musl, including Alpine) and Windows, on x64 and arm64. Each
+platform package includes its own PDFium library, so there is nothing else to
+install.
 
 ## Usage
 

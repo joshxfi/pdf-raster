@@ -88,6 +88,25 @@ function getTargetDescriptor() {
     };
   }
 
+  if (
+    target === "aarch64-unknown-linux-musl" ||
+    target === "linux-arm64-musl"
+  ) {
+    return {
+      archiveName: "pdfium-linux-musl-arm64.tgz",
+      cacheKey: "linux-arm64-musl",
+      targetFileName: "libpdfium.so",
+    };
+  }
+
+  if (target === "x86_64-unknown-linux-musl" || target === "linux-x64-musl") {
+    return {
+      archiveName: "pdfium-linux-musl-x64.tgz",
+      cacheKey: "linux-x64-musl",
+      targetFileName: "libpdfium.so",
+    };
+  }
+
   if (target === "aarch64-pc-windows-msvc" || target === "win32-arm64-msvc") {
     return {
       archiveName: "pdfium-win-arm64.tgz",
@@ -357,6 +376,7 @@ export {
   getRequestedTarget,
   getTargetDescriptor,
   getWorkspacePdfiumCandidates,
+  isMusl,
   repoRoot,
   resolvePdfiumSourcePath,
 };

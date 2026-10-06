@@ -97,17 +97,33 @@ bun run --filter pdf-raster test
 If `convert()` still throws `PDFIUM_UNAVAILABLE`, check that `PDFIUM_LIB_PATH`
 is unset or points to a library built for your platform.
 
+## Building for Alpine
+
+The musl targets build inside an Alpine container, the same way the Release
+workflow builds them. The container installs Linux dependencies into
+`node_modules` and `core/target`, so run it in a fresh clone rather than your
+working copy, on a host of the target architecture:
+
+```bash
+docker run --rm -v "$PWD:/work" -w /work node:24-alpine \
+  sh scripts/build-musl.sh linux-arm64-musl
+```
+
+Use `linux-x64-musl` on an x64 host. The script builds the addon, stages
+PDFium and runs the test suite in the container. The artifact lands in
+`core/artifacts/`.
+
 ## Releasing
 
 - Every change that affects the package needs a changeset. Create one with
   `bun run changeset`. CI fails without it.
 - Merging to `main` opens or updates a "Version Packages" pull request.
-- Merging that pull request publishes all 7 packages, `pdf-raster` and its 6
+- Merging that pull request publishes all 9 packages, `pdf-raster` and its 8
   platform packages, from `main` with npm provenance.
 - Running the Release workflow by hand (`workflow_dispatch`) on another branch
-  builds and smoke-tests all 6 targets without publishing.
+  builds and smoke-tests all 8 targets without publishing.
 - `bun run release:publish -- --dry-run` checks the packaging without
-  publishing. It needs all 6 native artifacts in `core/artifacts/`, which you
+  publishing. It needs all 8 native artifacts in `core/artifacts/`, which you
   can download from a Release workflow run.
 
 Running `npm publish` in `core/` fails on purpose. Publish only through the
