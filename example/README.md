@@ -23,7 +23,9 @@ Then open [http://localhost:3000](http://localhost:3000).
 | File | What it does |
 | :--- | :----------- |
 | `app/api/convert/route.ts` | Validates the upload, calls `convert()` and returns each page as a PNG data URL with timings |
-| `app/workbench.tsx` | The upload form, DPI control and page previews |
+| `app/workbench.tsx` | The upload form, DPI control and page thumbnails |
+| `app/page-preview.tsx` | The full-size page preview, with arrow-key navigation and a download button |
+| `app/lib/download.ts` | Single-page downloads and "Download all", which zips the PNGs with fflate |
 | `app/lib/demo-config.ts` | DPI choices, the 6-page limit and page-number parsing |
 | `next.config.js` | Lists `pdf-raster` in `serverExternalPackages` so Next.js does not bundle the native addon |
 
