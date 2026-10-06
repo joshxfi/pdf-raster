@@ -69,30 +69,31 @@ Settings: dpi=300, output=png, pages=all, warmups=1, runs=5, libs=pdf-raster,pdf
 Input size: 112 KB
 Library                       Pages  Avg total   P50 total   Avg/page   Pages/s  Avg bytes
 ----------------------------  -----  ----------  ----------  ---------  -------  ---------
-pdf-raster                    20     201.14 ms   198.92 ms   10.06 ms   99.5     58.9 MB
-pdfjs-dist + @napi-rs/canvas  20     3499.42 ms  3495.92 ms  174.97 ms  n/a      23.4 MB
-pdfjs-dist + node-canvas      20     5138.06 ms  5135.61 ms  256.90 ms  n/a      30.1 MB
+pdf-raster                    20     201.52 ms   200.93 ms   10.08 ms   99.3     58.9 MB
+pdfjs-dist + @napi-rs/canvas  20     3538.56 ms  3534.54 ms  176.93 ms  n/a      23.4 MB
+pdfjs-dist + node-canvas      20     5137.57 ms  5136.13 ms  256.88 ms  n/a      30.1 MB
 
-Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 17.40x
-Relative speed (pdf-raster vs pdfjs-dist + node-canvas): total 25.54x
+Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 17.56x
+Relative speed (pdf-raster vs pdfjs-dist + node-canvas): total 25.49x
 
 File: mixed-10.pdf (benchmark/.fixtures/mixed-10.pdf)
 Settings: dpi=300, output=png, pages=all, warmups=1, runs=5, libs=pdf-raster,pdfjs-napi,pdfjs-node-canvas, concurrency=1
 Input size: 2.9 MB
 Library                       Pages  Avg total   P50 total   Avg/page   Pages/s  Avg bytes
 ----------------------------  -----  ----------  ----------  ---------  -------  ---------
-pdf-raster                    10     171.33 ms   171.33 ms   17.13 ms   58.4     52.9 MB
-pdfjs-dist + @napi-rs/canvas  10     2181.57 ms  2182.55 ms  218.16 ms  n/a      19.4 MB
-skipped: pdfjs-node-canvas (Image or Canvas expected)
+pdf-raster                    10     171.33 ms   170.26 ms   17.13 ms   58.4     52.9 MB
+pdfjs-dist + @napi-rs/canvas  10     2182.96 ms  2184.32 ms  218.30 ms  n/a      19.4 MB
+pdfjs-dist + node-canvas      10     2990.47 ms  2990.91 ms  299.05 ms  n/a      21.9 MB
 
-Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 12.73x
+Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 12.74x
+Relative speed (pdf-raster vs pdfjs-dist + node-canvas): total 17.45x
 ```
 
-A relative speed of `17.40x` means the other library took 17.40 times as long
+A relative speed of `17.56x` means the other library took 17.56 times as long
 as pdf-raster for the whole run.
 
-`pdfjs-dist + node-canvas` throws `Image or Canvas expected` on the embedded
-image in `mixed-10.pdf`. The benchmark records the failure and moves on.
+If a library fails on a PDF, the benchmark prints a `skipped:` line with the
+error and continues with the others.
 
 ## Output size
 

@@ -24,9 +24,9 @@ export const benchmarkFixtures: BenchmarkFixture[] = [
     id: "text-20",
     label: "text-20.pdf, 20 text pages",
     rows: [
-      { library: "pdf-raster", msPerPage: 10.06 },
-      { library: "pdfjs-dist + @napi-rs/canvas", msPerPage: 174.97 },
-      { library: "pdfjs-dist + node-canvas", msPerPage: 256.9 },
+      { library: "pdf-raster", msPerPage: 10.08 },
+      { library: "pdfjs-dist + @napi-rs/canvas", msPerPage: 176.93 },
+      { library: "pdfjs-dist + node-canvas", msPerPage: 256.88 },
     ],
   },
   {
@@ -34,20 +34,16 @@ export const benchmarkFixtures: BenchmarkFixture[] = [
     label: "mixed-10.pdf, 10 pages of text and images",
     rows: [
       { library: "pdf-raster", msPerPage: 17.13 },
-      { library: "pdfjs-dist + @napi-rs/canvas", msPerPage: 218.16 },
-      {
-        library: "pdfjs-dist + node-canvas",
-        msPerPage: null,
-        note: "fails: Image or Canvas expected",
-      },
+      { library: "pdfjs-dist + @napi-rs/canvas", msPerPage: 218.3 },
+      { library: "pdfjs-dist + node-canvas", msPerPage: 299.05 },
     ],
   },
 ];
 
 export const benchmarkSummary = {
   /** pdf-raster vs pdfjs-dist + @napi-rs/canvas, total time. */
-  speedupRange: "12.7× to 17.4×",
+  speedupRange: "12.7× to 17.6×",
   /** The text-20 multiplier, the larger of the two. */
-  maxSpeedup: "17.4×",
+  maxSpeedup: "17.6×",
   fastestMsPerPage: "10.1 ms",
 };
