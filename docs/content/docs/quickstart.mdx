@@ -1,158 +1,120 @@
 ---
 title: Quickstart
-description: Convert PDFs into page images from a file path or an in-memory buffer.
+description: Render PDF pages from a file path or a buffer, pick pages and choose an output format.
 ---
 
-`convert()` is the only public entrypoint you need to learn first.
+Everything in pdf-raster goes through `convert(input, options?)`. This page
+covers the options you will use first.
 
-## Convert all pages from a file path
+## Render every page
 
 ```ts
+import { writeFile } from "node:fs/promises";
 import { convert } from "pdf-raster";
 
 const pages = await convert("./report.pdf");
 
 for (const page of pages) {
-  console.log({
-    pageIndex: page.pageIndex,
-    outputFormat: page.mimeType,
-    width: page.width,
-    height: page.height,
-    dpi: page.dpi,
-  });
+  await writeFile(`page-${page.pageIndex + 1}.png`, page.data);
 }
 ```
 
-<Callout type="info" title="Default behavior">
-  If `pages` is omitted, the full document is rendered. If `outputFormat` is
-  omitted, the output defaults to PNG.
-</Callout>
+Without options, pdf-raster renders every page at 300 DPI and encodes each one
+as PNG.
 
-## What one page looks like
+## Read the result
 
-Each item in `pages` is a complete rendered image result:
+`convert()` resolves to an array with one `ConvertedPage` per rendered page:
 
 ```ts
 const [page] = await convert("./report.pdf");
 
-console.log({
-  pageIndex: page.pageIndex,
-  mimeType: page.mimeType,
-  width: page.width,
-  height: page.height,
-  dpi: page.dpi,
-  bytes: page.data.byteLength,
-});
-
+console.log(page);
 // {
 //   pageIndex: 0,
+//   data: <Buffer 89 50 4e 47 ...>,
 //   mimeType: "image/png",
-//   width: 833,
-//   height: 417,
+//   width: 2550,
+//   height: 3300,
 //   dpi: 300,
-//   bytes: 14032
 // }
 ```
 
-The actual image bytes are in `page.data`, so you can write them to disk,
-return them from an API, or pass them into another service directly.
+`data` holds the encoded image. You can write it to disk, return it from an
+HTTP handler or pass it to another library as is.
 
-## Convert selected pages
+## Render selected pages
 
-Page indices are zero-based:
+`pages` takes zero-based indices. The result follows the order you list them
+in:
 
 ```ts
-import { convert } from "pdf-raster";
-
 const pages = await convert("./report.pdf", {
-  pages: [0, 2],
-  dpi: 300,
+  pages: [0, 2], // the first and third pages
 });
 ```
 
+An index past the last page throws `INVALID_PAGE_INDEX`.
+
 ## Choose an output format
 
-PNG is the default, but you can request another encoded format when needed:
-
 ```ts
-import { convert } from "pdf-raster";
-
 const pages = await convert("./report.pdf", {
   outputFormat: "webp",
 });
 
-console.log(pages[0].mimeType);
-// "image/webp"
+console.log(pages[0].mimeType); // "image/webp"
 ```
 
-## Convert from an in-memory buffer
+| Format | Compression | When to use it |
+| :----- | :---------- | :------------- |
+| `png` (default) | Lossless, fast | The fastest encode. Files are the largest. |
+| `webp` | Lossless | About a third of the PNG size on text pages. |
+| `jpeg` | Lossy, quality 75 | The smallest files for pages with photos or scans. |
 
-<CodeBlockTabs defaultValue="path">
-  <CodeBlockTabsList>
-    <CodeBlockTabsTrigger value="path">File path</CodeBlockTabsTrigger>
-    <CodeBlockTabsTrigger value="buffer">In-memory buffer</CodeBlockTabsTrigger>
-  </CodeBlockTabsList>
-  <CodeBlockTab value="path">
+The [benchmark](/docs/benchmark#output-size) lists measured sizes for each
+format.
+
+## Pass bytes instead of a path
+
+If the PDF is already in memory, pass a `Buffer`, `Uint8Array` or
+`ArrayBuffer`. pdf-raster does not write a temporary file.
 
 ```ts
-import { convert } from "pdf-raster";
+const response = await fetch("https://example.com/invoice.pdf");
+const pages = await convert(await response.arrayBuffer(), { dpi: 150 });
+```
 
-const pages = await convert("./invoice.pdf", {
-  dpi: 300,
+## Other options
+
+```ts
+const pages = await convert("./statement.pdf", {
+  dpi: 200,
+  password: "s3cret", // for encrypted PDFs
+  crop: { x: 0, y: 0, width: 1700, height: 600 }, // in rendered pixels
+  renderAnnotations: false, // skip comments and form field values
+  maxPixels: 50_000_000, // reject pages larger than this
 });
 ```
 
-  </CodeBlockTab>
-  <CodeBlockTab value="buffer">
+The [API reference](/docs/api-reference) describes each option and its
+default.
 
-```ts
-import { readFile } from "node:fs/promises";
-import { convert } from "pdf-raster";
-
-const bytes = await readFile("./invoice.pdf");
-const pages = await convert(bytes, {
-  dpi: 300,
-});
-```
-
-  </CodeBlockTab>
-</CodeBlockTabs>
-
-## Understand the result
-
-Every page includes:
-
-- `pageIndex`
-- `data` as an encoded image `Buffer`
-- `mimeType`
-- `width`
-- `height`
-- `dpi`
-
-These values are enough to:
-
-- save the image
-- display it in a UI
-- upload it to another API
-- feed it into downstream processing
-
-## Common first mistakes
+## Common questions
 
 <Accordions type="single">
-  <Accordion title="Why are page numbers zero-based?">
-    The API uses JavaScript-style zero-based indices because `pages` is an
-    array of page indices, not human-readable page labels.
+  <Accordion title="Why do page indices start at 0?">
+    `pages` is an array of indices, like any JavaScript array. Use `pages: [0]`
+    for the first page. `page.pageIndex` uses the same numbering.
   </Accordion>
-  <Accordion title="Why does the library return image buffers instead of file paths?">
-    Returning bytes keeps the package flexible for APIs, workers, storage, and
-    other downstream consumers without forcing filesystem writes.
+  <Accordion title="Why does it return buffers instead of writing files?">
+    Most callers send the image somewhere else, such as an HTTP response, object
+    storage or an OCR engine. A buffer skips the disk round trip. Use
+    `writeFile` when you do want a file.
   </Accordion>
-  <Accordion title="Should I call this in a browser component?">
-    No. Keep it in server code only.
+  <Accordion title="Which DPI should I use?">
+    300 DPI suits OCR and vision models and is the default. 72 to 150 DPI is
+    enough for thumbnails and on-screen previews, and it renders faster with
+    smaller output.
   </Accordion>
 </Accordions>
-
-## Read next
-
-- [API reference](/docs/api-reference)
-- [Examples and patterns](/docs/example-patterns)

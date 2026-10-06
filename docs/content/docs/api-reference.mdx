@@ -1,39 +1,47 @@
 ---
 title: API reference
-description: Inputs, options, outputs, and stable error codes for convert().
+description: The convert() signature, its options, the returned pages and the error codes.
 ---
 
 ## `convert(input, options?)`
 
 ```ts
+import { convert } from "pdf-raster";
+
 function convert(
   input: string | Buffer | Uint8Array | ArrayBuffer,
   options?: ConvertOptions,
 ): Promise<ConvertedPage[]>;
 ```
 
-## Inputs
+Renders the requested pages of a PDF and resolves to one `ConvertedPage` per
+page, in the order of `options.pages`. It rejects with a `PdfToImagesError` on
+failure.
+
+## Input
 
 <TypeTable
   type={{
-    "file path": {
+    string: {
       type: "string",
-      description: "Absolute or relative path to a PDF on disk.",
+      description: "Path to a PDF file, absolute or relative to the working directory.",
     },
     Buffer: {
       type: "Buffer",
-      description: "PDF bytes already loaded into memory.",
+      description: "PDF bytes in memory, such as the result of readFile().",
     },
     Uint8Array: {
       type: "Uint8Array",
-      description: "Typed-array PDF bytes.",
+      description: "PDF bytes in a typed array.",
     },
     ArrayBuffer: {
       type: "ArrayBuffer",
-      description: "Browser-style binary buffer passed from server code.",
+      description: "PDF bytes from APIs such as response.arrayBuffer() or file.arrayBuffer().",
     },
   }}
 />
+
+Any other value throws `INVALID_INPUT`.
 
 ## `ConvertOptions`
 
@@ -41,52 +49,48 @@ function convert(
   type={{
     pages: {
       type: "number[]",
-      description: "Zero-based page indices to render.",
+      description: "Zero-based indices of the pages to render. The result follows this order.",
       required: false,
-      default: "all pages",
+      default: "every page",
     },
     dpi: {
       type: "number",
-      description: "Target raster DPI.",
+      description: "Render resolution. pdf-raster truncates it to an integer. A US letter page at 300 DPI is 2550 × 3300 pixels.",
       required: false,
       default: "300",
     },
     outputFormat: {
       type: '"png" | "jpeg" | "webp"',
-      description: "Output format. PNG is the default.",
+      description: "Image encoding. PNG and WebP are lossless. JPEG uses quality 75 with 4:4:4 chroma.",
       required: false,
       default: '"png"',
     },
     password: {
       type: "string",
-      description: "Password for encrypted PDFs.",
+      description: "Password for an encrypted PDF.",
       required: false,
     },
     crop: {
-      type: "{ x; y; width; height }",
-      description: "Crop rectangle applied after rendering.",
+      type: "Crop",
+      description: "Rectangle to keep, in pixels of the rendered page. It must fit inside the page.",
       required: false,
       typeDescription:
         "{ x: number; y: number; width: number; height: number }",
     },
     renderAnnotations: {
       type: "boolean",
-      description: "Whether annotations and form data should be rendered.",
+      description: "Draw annotations and form field values on the page.",
       required: false,
       default: "true",
     },
     maxPixels: {
       type: "number",
-      description:
-        "Maximum pixels per rendered page (width × height). Larger renders throw INVALID_OPTIONS. Unlimited when omitted.",
+      description: "Largest allowed width × height for one rendered page. Larger pages throw INVALID_OPTIONS before any memory is allocated.",
       required: false,
+      default: "no limit",
     },
   }}
 />
-
-<Callout type="warning" title="Page indices are zero-based">
-  `pages: [0]` means the first page. `pages: [1]` means the second page.
-</Callout>
 
 ## `ConvertedPage`
 
@@ -94,81 +98,65 @@ function convert(
   type={{
     pageIndex: {
       type: "number",
-      description: "Zero-based page index in the source document.",
+      description: "Zero-based index of the page in the source PDF.",
       required: true,
     },
     data: {
       type: "Buffer",
-      description: "Encoded image bytes for the rendered page.",
+      description: "The encoded image.",
       required: true,
     },
     mimeType: {
       type: '"image/png" | "image/jpeg" | "image/webp"',
-      description: "MIME type of the returned image buffer.",
+      description: "MIME type of data.",
       required: true,
     },
     width: {
       type: "number",
-      description: "Rendered image width in pixels.",
+      description: "Image width in pixels, after any crop.",
       required: true,
     },
     height: {
       type: "number",
-      description: "Rendered image height in pixels.",
+      description: "Image height in pixels, after any crop.",
       required: true,
     },
     dpi: {
       type: "number",
-      description: "Effective DPI used to render the page.",
+      description: "The DPI pdf-raster rendered the page at.",
       required: true,
     },
   }}
 />
 
-## Error codes
+## `PdfToImagesError`
 
-<TypeTable
-  type={{
-    INVALID_INPUT: {
-      type: "PdfToImagesError",
-      description: "The input was not a supported file path or binary type.",
-    },
-    INVALID_OPTIONS: {
-      type: "PdfToImagesError",
-      description:
-        "One or more options were invalid, such as a non-positive DPI or unsupported output format.",
-    },
-    INVALID_PAGE_INDEX: {
-      type: "PdfToImagesError",
-      description: "A requested page index was negative or out of range.",
-    },
-    INVALID_CROP: {
-      type: "PdfToImagesError",
-      description:
-        "The crop rectangle was malformed or exceeded the rendered page bounds.",
-    },
-    PASSWORD_ERROR: {
-      type: "PdfToImagesError",
-      description: "The PDF password was missing or incorrect.",
-    },
-    MALFORMED_PDF: {
-      type: "PdfToImagesError",
-      description: "The PDF could not be parsed by PDFium.",
-    },
-    PDFIUM_UNAVAILABLE: {
-      type: "PdfToImagesError",
-      description:
-        "The native PDFium library or binding could not be initialized.",
-    },
-    RENDER_ERROR: {
-      type: "PdfToImagesError",
-      description:
-        "An unexpected native rendering failure occurred after input validation.",
-    },
-  }}
-/>
+```ts
+import { PdfToImagesError } from "pdf-raster";
 
-## Read next
+class PdfToImagesError extends Error {
+  name: "PdfToImagesError";
+  code: PdfToImagesErrorCode;
+}
+```
 
-- [Errors and troubleshooting](/docs/errors-and-troubleshooting)
-- [Examples and patterns](/docs/example-patterns)
+`code` is one of:
+
+| Code | Meaning |
+| :--- | :------ |
+| `INVALID_INPUT` | The input is not a path, `Buffer`, `Uint8Array` or `ArrayBuffer`. |
+| `INVALID_OPTIONS` | An option is invalid, such as a DPI of 0 or an unknown format, or a page exceeds `maxPixels` or 65,535 pixels on a side. |
+| `INVALID_PAGE_INDEX` | A page index is negative, not an integer, or past the last page. |
+| `INVALID_CROP` | The crop rectangle is malformed or extends past the rendered page. |
+| `PASSWORD_ERROR` | The PDF is encrypted and the password is missing or wrong. |
+| `MALFORMED_PDF` | PDFium could not parse the file. |
+| `PDFIUM_UNAVAILABLE` | The native addon or the PDFium library could not load. |
+| `RENDER_ERROR` | Rendering or encoding failed after the input passed validation. |
+
+[Errors and troubleshooting](/docs/errors-and-troubleshooting) covers how to
+handle each one.
+
+## Exported types
+
+`ConvertInput`, `ConvertOptions`, `ConvertedPage`, `Crop`, `OutputFormat` and
+`PdfToImagesErrorCode` are exported as types from `pdf-raster`.

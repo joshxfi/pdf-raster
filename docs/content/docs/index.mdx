@@ -1,90 +1,66 @@
 ---
 title: Introduction
-description: What pdf-raster is for, what it returns, and where it fits in backend and document-processing workflows.
+description: pdf-raster renders PDF pages to PNG, JPEG or WebP buffers in Node.js and Bun.
 ---
 
-<Callout type="info" title="Single responsibility">
-  `pdf-raster` converts PDF pages into image buffers with a single
-  native API.
-</Callout>
+pdf-raster turns PDF pages into encoded images on the server. It runs PDFium,
+the PDF engine from Chromium, inside a native addon written in Rust with
+napi-rs. You call one function, `convert()`, and get back one image buffer per
+page.
 
-`pdf-raster` is a native server-side library for turning PDFs into
-page images quickly.
+```ts
+import { convert } from "pdf-raster";
 
-It fits cleanly anywhere you need page images instead of PDF bytes:
+const pages = await convert("./report.pdf");
+// pages[0].data is a PNG Buffer of the first page
+```
 
-<Steps>
-  <Step>
-    Start with a PDF from disk, object storage, an upload, or another API.
-  </Step>
-  <Step>
-    Use `pdf-raster` to render the document into page images.
-  </Step>
-  <Step>
-    Use the output in previews, background jobs, OCR flows, VLM prompts, or
-    any other downstream image workflow.
-  </Step>
-</Steps>
+<Pipeline />
 
-## What the library does
+## When to use it
 
-<Cards>
-  <Card title="One public API" href="/docs/api-reference">
-    The package centers on `convert(input, options?)`.
-  </Card>
-  <Card title="Native rendering" href="/docs/runtime-and-environment">
-    Rendering is handled through Rust, `napi-rs`, and PDFium.
-  </Card>
-  <Card title="Lossless output" href="/docs/quickstart">
-    Each page comes back as an image `Buffer` with dimensions and DPI metadata.
-  </Card>
-</Cards>
+Use pdf-raster when the next step in your system needs page images instead of
+PDF bytes. For example:
 
-## What it intentionally does not do
+- OCR engines such as Tesseract.js
+- vision models that accept image input
+- page previews and thumbnails in a web app
+- batch jobs that store or index documents as images
 
-- no browser runtime support
-- no document editing, annotation, or extraction APIs
+## What it does not do
 
-That narrow API keeps the package easy to reason about. You can use the output
-for previews, storage, background jobs, OCR, VLM prompts, or other downstream
-processing without changing how the conversion layer works.
+- It does not run in browsers, Edge runtimes or WebAssembly. It needs Node.js
+  24 or newer, or Bun.
+- It does not edit PDFs, fill forms or extract text.
 
-## Output shape
+## Output
 
-Each page is returned as:
+Each page comes back as a `ConvertedPage`:
 
 ```ts
 type ConvertedPage = {
-  pageIndex: number;
-  data: Buffer;
+  pageIndex: number; // zero-based index in the source PDF
+  data: Buffer; // the encoded image
   mimeType: "image/png" | "image/jpeg" | "image/webp";
-  width: number;
-  height: number;
+  width: number; // pixels
+  height: number; // pixels
   dpi: number;
 };
 ```
 
-## Why this package exists
+The extra fields describe `data`, so you can store, serve or forward the bytes
+without decoding the image first.
 
-Many systems do not want PDF bytes directly. They want page images that are:
-
-- lossless
-- easy to inspect
-- high enough resolution for reading and analysis
-- straightforward to pass into downstream APIs
-
-This package makes that conversion step small, explicit, and fast.
-
-## Read next
+## Next steps
 
 <Cards>
   <Card title="Installation" href="/docs/installation">
-    Install the package and understand the native runtime model.
+    Requirements, supported platforms and the Next.js config line.
   </Card>
   <Card title="Quickstart" href="/docs/quickstart">
-    Convert a PDF into page images with the real API.
+    Paths, buffers, page selection and output formats.
   </Card>
   <Card title="Examples" href="/docs/example-patterns">
-    Choose the right recipe for Node, Next.js, and downstream image workflows.
+    Node.js scripts, Next.js routes, OCR and vision models.
   </Card>
 </Cards>

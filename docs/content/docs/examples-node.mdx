@@ -1,93 +1,95 @@
 ---
-title: Node.js examples
-description: Common Node and Bun usage patterns for convert().
+title: Node.js and Bun
+description: Convert PDFs from disk or from memory in scripts, workers and servers.
 ---
 
-Use these patterns when conversion happens entirely in server code or a worker.
+These examples run the same way in Node.js 24+ and Bun.
 
-## Convert a PDF from disk
+## Save every page to disk
+
+```ts
+import { mkdir, writeFile } from "node:fs/promises";
+import { convert } from "pdf-raster";
+
+await mkdir("./out", { recursive: true });
+
+const pages = await convert("./report.pdf", { outputFormat: "webp" });
+
+for (const page of pages) {
+  await writeFile(`./out/page-${page.pageIndex + 1}.webp`, page.data);
+}
+```
+
+## Make a thumbnail of the first page
+
+A low DPI renders faster and gives a smaller file. At 72 DPI a US letter page
+is 612 × 792 pixels.
+
+```ts
+const [cover] = await convert("./report.pdf", {
+  pages: [0],
+  dpi: 72,
+  outputFormat: "jpeg",
+});
+```
+
+## Convert bytes from memory
+
+Pass a `Buffer`, `Uint8Array` or `ArrayBuffer` when the PDF comes from an
+upload, a queue message or a storage SDK.
+
+```ts
+import { GetObjectCommand, S3Client } from "@aws-sdk/client-s3";
+import { convert } from "pdf-raster";
+
+const s3 = new S3Client({});
+const object = await s3.send(
+  new GetObjectCommand({ Bucket: "documents", Key: "invoice.pdf" }),
+);
+const bytes = await object.Body!.transformToByteArray();
+
+const pages = await convert(bytes, { dpi: 300 });
+```
+
+## Process a long PDF in batches
+
+`convert()` holds every result in memory until it resolves. For documents
+with hundreds of pages, request a batch at a time and write each batch out
+before the next one.
 
 ```ts
 import { writeFile } from "node:fs/promises";
 import { convert } from "pdf-raster";
 
-const [firstPage] = await convert("./report.pdf", {
-  pages: [0],
-  dpi: 300,
-});
+const pageCount = 400; // from your own metadata
+const batchSize = 20;
 
-await writeFile("./report-page-1.png", firstPage.data);
+for (let start = 0; start < pageCount; start += batchSize) {
+  const indices = Array.from(
+    { length: Math.min(batchSize, pageCount - start) },
+    (_, i) => start + i,
+  );
+  const pages = await convert("./archive.pdf", { pages: indices });
 
-console.log(firstPage.mimeType);
-// "image/png"
+  for (const page of pages) {
+    await writeFile(`./out/${page.pageIndex}.png`, page.data);
+  }
+}
 ```
 
-This is the simplest shape when the PDF already lives on disk and you want to
-save or inspect the rendered image output directly.
+pdf-raster has no page-count API, so get the count from your own records or
+from another PDF library.
 
-## Convert selected pages from a larger document
+## Convert many files at once
+
+Concurrent calls are safe. Because PDFium renders one page at a time across
+the process, running calls in parallel adds little speed. It helps most with
+JPEG, where encoding overlaps with the next call's rendering. See the
+[throughput table](/docs/benchmark#throughput-and-concurrency).
 
 ```ts
-import { convert } from "pdf-raster";
-
-const pages = await convert("./report.pdf", {
-  pages: [0, 3, 4],
-  dpi: 300,
-});
+const files = ["a.pdf", "b.pdf", "c.pdf", "d.pdf"];
+const results = await Promise.all(
+  files.map((file) => convert(file, { outputFormat: "jpeg" })),
+);
 ```
-
-## Request a different output format
-
-```ts
-import { convert } from "pdf-raster";
-
-const pages = await convert("./report.pdf", {
-  outputFormat: "webp",
-  dpi: 200,
-});
-
-console.log(pages[0].mimeType);
-// "image/webp"
-```
-
-Use PNG when you want the safest default. WebP output is also lossless and
-usually smaller than PNG (about 3x smaller on text pages). Use JPEG when smaller payloads matter more than exact
-pixels.
-
-## Convert from an in-memory buffer
-
-```ts
-import { readFile } from "node:fs/promises";
-import { convert } from "pdf-raster";
-
-const bytes = await readFile("./invoice.pdf");
-const pages = await convert(bytes, {
-  dpi: 300,
-});
-```
-
-## Path vs buffer
-
-<CodeBlockTabs defaultValue="path">
-  <CodeBlockTabsList>
-    <CodeBlockTabsTrigger value="path">Path input</CodeBlockTabsTrigger>
-    <CodeBlockTabsTrigger value="buffer">Buffer input</CodeBlockTabsTrigger>
-  </CodeBlockTabsList>
-  <CodeBlockTab value="path">
-
-```ts
-await convert("./document.pdf");
-```
-
-  </CodeBlockTab>
-  <CodeBlockTab value="buffer">
-
-```ts
-await convert(pdfBuffer);
-```
-
-  </CodeBlockTab>
-</CodeBlockTabs>
-
-Use a path when the file already lives on disk. Use a buffer when the PDF came
-from an upload, queue payload, or external storage SDK.

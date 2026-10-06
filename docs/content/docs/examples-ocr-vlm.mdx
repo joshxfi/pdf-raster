@@ -1,15 +1,15 @@
 ---
-title: OCR and VLM examples
-description: Pass converted page images into OCR engines or multimodal SDKs.
+title: OCR and vision models
+description: Pass rendered pages to Tesseract.js or to a multimodal model with the AI SDK.
 ---
 
-These examples show how to pass converted page images into OCR and multimodal
-tools after rendering.
+OCR engines and vision models read images, not PDFs. Render the pages with
+pdf-raster first, then pass `page.data` to the next tool.
 
-<Callout type="info" title="Choose a format for the downstream tool">
-  PNG is the safest default. WebP is also lossless and smaller than PNG, but
-  slower to encode on large pages. JPEG is lossy and the smallest. Use WebP or
-  JPEG if the downstream tool accepts those formats.
+<Callout type="info" title="Resolution and format">
+  Render at 300 DPI, the default, so small text stays legible. PNG and WebP are
+  lossless. JPEG adds compression artifacts around text, so avoid it for OCR
+  unless the tool requires it.
 </Callout>
 
 ## Tesseract.js
@@ -19,19 +19,17 @@ import { convert } from "pdf-raster";
 import { createWorker } from "tesseract.js";
 
 const worker = await createWorker("eng");
-const [page] = await convert("./scan.pdf", {
-  pages: [0],
-  dpi: 300,
-});
+const pages = await convert("./scan.pdf");
 
-const result = await worker.recognize(page.data);
-console.log(result.data.text);
+for (const page of pages) {
+  const { data } = await worker.recognize(page.data);
+  console.log(`Page ${page.pageIndex + 1}:`, data.text);
+}
+
+await worker.terminate();
 ```
 
-`page.data` is already an encoded image buffer, so it can be passed directly
-into OCR libraries that accept image bytes.
-
-## AI SDK `generateText`
+## AI SDK
 
 ```ts
 import { convert } from "pdf-raster";
@@ -40,38 +38,40 @@ import { openai } from "@ai-sdk/openai";
 
 const [page] = await convert("./invoice.pdf", {
   pages: [0],
-  dpi: 300,
+  outputFormat: "webp",
 });
 
 const { text } = await generateText({
-  model: openai("gpt-4.1"),
+  model: openai("gpt-6-astra"),
   messages: [
     {
       role: "user",
       content: [
-        { type: "text", text: "Extract all visible text from this page." },
-        { type: "image", image: page.data },
+        { type: "text", text: "List the line items on this invoice." },
+        { type: "file", data: page.data, mediaType: page.mimeType },
       ],
     },
   ],
 });
 ```
 
-The same pattern works for other image-capable SDKs: convert first, then pass
-`page.data` and `page.mimeType` into the next system.
+Other image-capable SDKs take the same two values: the bytes in `page.data`
+and the type in `page.mimeType`. Some APIs want base64 instead of bytes, which
+`page.data.toString("base64")` gives you.
 
-## Why the handoff is simple
+## Sending many pages to a model
 
-The converted page result is already shaped for downstream use:
+Most vision APIs limit image size and count per request, and they bill by
+image size. Check your provider's limits, then lower `dpi` or crop to the
+region you need:
 
-- `page.data` is the image payload
-- `page.mimeType` tells the consumer what it is
-- `page.width`, `page.height`, and `page.dpi` help with validation and metrics
+```ts
+const [header] = await convert("./invoice.pdf", {
+  pages: [0],
+  dpi: 200,
+  crop: { x: 0, y: 0, width: 1700, height: 500 }, // the top of the page
+});
+```
 
-## Boundary to preserve
-
-<Callout type="info" title="Keep responsibilities separated">
-  `pdf-raster` handles the PDF-to-image step. OCR engines, VLM
-  providers, and post-processing can be layered on top in app code or separate
-  packages.
-</Callout>
+pdf-raster only renders. Retries, prompts and parsing the model's answer
+belong in your application code.

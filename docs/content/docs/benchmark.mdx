@@ -1,22 +1,20 @@
 ---
 title: Benchmark
-description: Understand the local benchmark setup, sample results and throughput numbers for pdf-raster.
+description: How pdf-raster compares with pdfjs-dist, how output size differs by format, and how to run the benchmark yourself.
 ---
 
-<Callout type="info" title="Sample local results">
-  The numbers on this page are from a local benchmark run against the
-  generated fixture PDFs, on an AMD Ryzen 7 7800X3D (16 threads) running Linux
-  x64. Treat them as sample measurements, not universal guarantees.
+The repository includes a benchmark that renders the same PDFs with
+pdf-raster and with pdfjs-dist on two Node.js canvas backends,
+`@napi-rs/canvas` and `node-canvas`.
+
+<BenchmarkChart className="my-8" />
+
+<Callout type="info" title="One machine, two PDFs">
+  All numbers on this page come from an Apple M4 (4 performance and 6
+  efficiency cores, 24 GB) on macOS 27, running the benchmark under Bun 1.4.2. Your
+  hardware and your PDFs will give different numbers. Run the benchmark to
+  measure them.
 </Callout>
-
-## What the benchmark compares
-
-The benchmark currently compares three implementations on the same input PDFs
-and settings:
-
-- `pdf-raster`
-- `pdfjs-dist + @napi-rs/canvas`
-- `pdfjs-dist + node-canvas`
 
 ## Run it
 
@@ -24,46 +22,46 @@ and settings:
 bun run benchmark
 ```
 
-Useful flags:
+Flags:
 
-- `--libs <list>` runs a comma-separated subset of `pdf-raster`,
-  `pdfjs-napi` and `pdfjs-node-canvas` (default: all three).
-- `--concurrency <n>` starts `n` simultaneous `convert()` calls per measured
-  run and reports pages per second. It applies to `pdf-raster` only; the
-  pdf.js backends always run at concurrency 1.
+- `--libs <list>` picks which libraries to run, from `pdf-raster`,
+  `pdfjs-napi` and `pdfjs-node-canvas`. All three run by default.
+- `--output <format>` sets the format, `png`, `jpeg` or `webp`.
+- `--concurrency <n>` starts `n` `convert()` calls at once and reports pages
+  per second. It applies to pdf-raster only. The pdf.js backends always run one
+  conversion at a time.
+- `--dpi <n>` and `--pages <list>` set the resolution and the zero-based pages
+  to render.
+- `--runs <n>` and `--warmups <n>` set how many measured and warmup runs to do.
+- `--json` prints a JSON report instead of tables.
+
+Pass PDF paths as arguments to benchmark your own files. The command runs
+inside `benchmark/`, so use absolute paths:
 
 ```bash
-bun run benchmark -- --libs pdf-raster --output jpeg --concurrency 4
+bun run benchmark -- /path/to/report.pdf --libs pdf-raster --output jpeg --concurrency 4
 ```
 
-## Default settings
-
-<Steps>
-  <Step>
-    Use two deterministic, generated US-letter fixtures written to
-    `benchmark/.fixtures/` (git-ignored): `text-20.pdf` (20 text pages) and
-    `mixed-10.pdf` (10 pages alternating text and a 1200x900 image). Pass PDF
-    paths explicitly to benchmark your own files. `bun run --cwd benchmark
-    fixtures` regenerates them.
-  </Step>
-  <Step>
-    Render at `dpi=300` with `output=png`.
-  </Step>
-  <Step>
-    Execute one warmup run, then repeated measured runs for each backend.
-  </Step>
-</Steps>
-
-<Callout type="warning" title="node-canvas requirement">
-  The benchmark workspace includes both `@napi-rs/canvas` and `node-canvas`.
-  Depending on your machine, `node-canvas` may require native system
-  prerequisites before the benchmark can run successfully.
+<Callout type="warning" title="node-canvas needs system libraries">
+  `node-canvas` builds against Cairo and other system libraries. Install its
+  prerequisites first, or skip it with `--libs pdf-raster,pdfjs-napi`.
 </Callout>
 
-## Sample output
+## Fixtures and settings
 
-Measured on an AMD Ryzen 7 7800X3D (16 threads), Linux x64, with
-`bun run benchmark -- --runs 5 --warmups 1`:
+The default fixtures are generated, letter-size PDFs written to
+`benchmark/.fixtures/`, which git ignores:
+
+- `text-20.pdf` has 20 pages of text.
+- `mixed-10.pdf` has 10 pages that alternate between text and a 1200 × 900
+  image.
+
+`bun run --cwd benchmark fixtures` regenerates them. Each library renders at
+300 DPI to PNG, with one warmup run followed by the measured runs.
+
+## Results
+
+Output of `bun run benchmark -- --runs 5 --warmups 1`:
 
 ```text
 File: text-20.pdf (benchmark/.fixtures/text-20.pdf)
@@ -71,86 +69,85 @@ Settings: dpi=300, output=png, pages=all, warmups=1, runs=5, libs=pdf-raster,pdf
 Input size: 112 KB
 Library                       Pages  Avg total   P50 total   Avg/page   Pages/s  Avg bytes
 ----------------------------  -----  ----------  ----------  ---------  -------  ---------
-pdf-raster                    20     338.19 ms   337.57 ms   16.91 ms   59.2     59.7 MB  
-pdfjs-dist + @napi-rs/canvas  20     4409.08 ms  4376.52 ms  220.45 ms  n/a      20.8 MB  
-pdfjs-dist + node-canvas      20     6562.84 ms  6528.58 ms  328.14 ms  n/a      29.5 MB  
+pdf-raster                    20     201.14 ms   198.92 ms   10.06 ms   99.5     58.9 MB
+pdfjs-dist + @napi-rs/canvas  20     3499.42 ms  3495.92 ms  174.97 ms  n/a      23.4 MB
+pdfjs-dist + node-canvas      20     5138.06 ms  5135.61 ms  256.90 ms  n/a      30.1 MB
 
-Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 13.04x
-Relative speed (pdf-raster vs pdfjs-dist + node-canvas): total 19.41x
+Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 17.40x
+Relative speed (pdf-raster vs pdfjs-dist + node-canvas): total 25.54x
 
 File: mixed-10.pdf (benchmark/.fixtures/mixed-10.pdf)
 Settings: dpi=300, output=png, pages=all, warmups=1, runs=5, libs=pdf-raster,pdfjs-napi,pdfjs-node-canvas, concurrency=1
 Input size: 2.9 MB
 Library                       Pages  Avg total   P50 total   Avg/page   Pages/s  Avg bytes
 ----------------------------  -----  ----------  ----------  ---------  -------  ---------
-pdf-raster                    10     259.43 ms   258.86 ms   25.94 ms   38.6     53.1 MB  
-pdfjs-dist + @napi-rs/canvas  10     2762.64 ms  2757.36 ms  276.26 ms  n/a      18.5 MB  
+pdf-raster                    10     171.33 ms   171.33 ms   17.13 ms   58.4     52.9 MB
+pdfjs-dist + @napi-rs/canvas  10     2181.57 ms  2182.55 ms  218.16 ms  n/a      19.4 MB
 skipped: pdfjs-node-canvas (Image or Canvas expected)
 
-Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 10.65x
+Relative speed (pdf-raster vs pdfjs-dist + @napi-rs/canvas): total 12.73x
 ```
 
-`pdfjs-dist + node-canvas` is skipped on `mixed-10.pdf` because it fails on the
-embedded image (`Image or Canvas expected`). The benchmark records the failure
-and continues with the other backends.
+A relative speed of `17.40x` means the other library took 17.40 times as long
+as pdf-raster for the whole run.
+
+`pdfjs-dist + node-canvas` throws `Image or Canvas expected` on the embedded
+image in `mixed-10.pdf`. The benchmark records the failure and moves on.
 
 ## Output size
 
-The `Avg bytes` column is the total output per run. pdf-raster's PNG output
-favours speed (fast compression), so its files are about 3x larger than the
-PNGs `pdfjs-dist` produces (59.7 MB vs 20.8 MB for the 20 `text-20` pages).
+`Avg bytes` is the total output of one run. pdf-raster compresses PNGs with a
+fast setting, so its PNG files are about 2.5 times larger than the ones
+pdfjs-dist writes. For the 20 pages of `text-20.pdf`, that is 58.9 MB against
+23.4 MB.
 
-Average output size per page for pdf-raster at 300 DPI:
+Average size per page from pdf-raster at 300 DPI:
 
-| Format        | text-20 | mixed-10 |
-| :------------ | :------ | :------- |
-| PNG           | 3055 KB | 5441 KB  |
-| WebP (lossless) | 969 KB  | 2348 KB  |
-| JPEG (q75)    | 1224 KB | 1121 KB  |
+| Format | text-20 | mixed-10 |
+| :----- | ------: | -------: |
+| PNG | 3016 KB | 5414 KB |
+| WebP (lossless) | 965 KB | 2345 KB |
+| JPEG (quality 75) | 1228 KB | 1124 KB |
 
-WebP is lossless and smallest on the text PDF; JPEG is lossy and smallest on
-the image-heavy PDF.
+WebP gives the smallest lossless output. On text pages it also beats JPEG. On
+pages with photos, JPEG is the smallest.
 
 ## Throughput and concurrency
 
-`--concurrency <n>` starts `n` simultaneous `convert()` calls per measured run
-(pdf-raster only) and reports pages per second across all of them:
+Pages per second from pdf-raster at 300 DPI, with 1 and 4 `convert()` calls
+running at once:
 
-```bash
-bun run benchmark -- --libs pdf-raster --output jpeg --concurrency 4
-```
+| Format | Calls | text-20 | mixed-10 |
+| :----- | ----: | ------: | -------: |
+| PNG | 1 | 97.4 | 58.4 |
+| PNG | 4 | 105.8 | 66.2 |
+| JPEG | 1 | 59.7 | 47.7 |
+| JPEG | 4 | 67.4 | 56.3 |
+| WebP | 1 | 96.1 | 57.8 |
+| WebP | 4 | 102.3 | 65.0 |
 
-pdf-raster throughput on `text-20.pdf` and `mixed-10.pdf` at 300 DPI, in pages
-per second (same machine), with 1 and 4 concurrent calls:
+Extra calls add 6 to 18 percent, because PDFium renders one page at a time
+across the whole process. They help most with JPEG, where encoding takes a
+larger share of each page. PNG and WebP encode at almost the same speed.
 
-| Format | Concurrency | text-20 | mixed-10 |
-| :----- | :---------- | :------ | :------- |
-| PNG    | 1           | 59.1    | 39.7     |
-| PNG    | 4           | 60.8    | 42.0     |
-| JPEG   | 1           | 48.4    | 32.5     |
-| JPEG   | 4           | 58.7    | 39.5     |
-| WebP   | 1           | 53.8    | 36.3     |
-| WebP   | 4           | 56.6    | 38.8     |
+### Compared with 0.1.0
 
-Compared with 0.1.x on the same machine, JPEG went from 7.0 to 48.4 pages/s and
-PNG from 31.7 to 59.1 pages/s on `text-20.pdf` at concurrency 1. See
-[Concurrency and memory](/docs/runtime-and-environment#concurrency-and-memory)
-for how rendering, encoding and memory behave under load.
+The published `pdf-raster@0.1.0` on the same machine, `text-20.pdf`, one call
+at a time, timed with the same settings (one warmup, five runs):
 
-## How to read the multipliers
+| Format | 0.1.0, pages/s | 0.2.0, pages/s | Change |
+| :----- | -------------: | -------------: | -----: |
+| PNG | 28.3 | 97.4 | 3.4× |
+| JPEG | 14.1 | 59.7 | 4.2× |
+| WebP | 36.8 | 96.1 | 2.6× |
 
-The relative speed line is a multiplier, not a percentage.
+JPEG moved to a faster encoder, and pages now encode in parallel outside the
+PDFium lock. [Concurrency and memory](/docs/runtime-and-environment#concurrency-and-memory)
+explains the model.
 
-- If the benchmark says `13.04x`, it means the comparison backend took `13.04`
-  times as long on that metric.
-- In other words, `pdf-raster` was `13.04x` faster on that sample.
+## What the numbers do and do not show
 
-## What this benchmark is useful for
-
-- compare end-to-end conversion speed on the included fixtures
-- spot regressions between local runs
-- compare the current PDFium-based package against `pdfjs-dist` canvas
-  backends
-
-Use it as a practical engineering comparison tool, not as a universal claim
-about every PDF or every deployment environment.
+The benchmark measures end-to-end `convert()` time on two synthetic PDFs. Use
+it to compare libraries on your hardware and to catch regressions between
+versions. It does not predict the speed of every PDF. Pages with complex
+vector art, many fonts or large images render slower.
