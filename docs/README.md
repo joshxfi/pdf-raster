@@ -17,9 +17,12 @@ The docs app runs on port `3001` in local development.
 
 - `app/(home)`: landing page
 - `app/docs`: documentation routes
+- `app/global.css`: color tokens, fonts and landing page styles
+- `components`: the benchmark chart, pipeline diagram and landing page parts
 - `content/docs`: MDX content for the library
+- `lib/benchmark.ts`: benchmark numbers shared by the landing page and docs
 - `lib/source.ts`: Fumadocs content source loader
-- `lib/layout.shared.tsx`: shared docs metadata and repo links
+- `lib/layout.shared.tsx`: nav, logo and repo links
 
 ## Notes
 

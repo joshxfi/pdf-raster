@@ -1,110 +1,174 @@
 @import "tailwindcss";
-@import "fumadocs-ui/css/solar.css";
+@import "fumadocs-ui/css/neutral.css";
 @import "fumadocs-ui/css/preset.css";
 
+@theme {
+  --font-sans:
+    var(--font-instrument-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono:
+    var(--font-jetbrains-mono), ui-monospace, "SFMono-Regular", monospace;
+}
+
+/*
+ * Palette: warm paper and ink with one orange accent. These override the
+ * Fumadocs tokens, so the docs layout, search dialog and MDX components all
+ * pick them up.
+ */
 :root {
-  --docs-lab-accent: #eb5e28;
-  --docs-lab-accent-soft: rgb(235 94 40 / 0.12);
+  --color-fd-background: #f7f6f2;
+  --color-fd-foreground: #1a1814;
+  --color-fd-muted: #efede6;
+  --color-fd-muted-foreground: #6b675e;
+  --color-fd-popover: #fbfaf7;
+  --color-fd-popover-foreground: #1a1814;
+  --color-fd-card: #fbfaf7;
+  --color-fd-card-foreground: #1a1814;
+  --color-fd-border: #e2dfd5;
+  --color-fd-primary: #c2410c;
+  --color-fd-primary-foreground: #fffaf5;
+  --color-fd-secondary: #efede6;
+  --color-fd-secondary-foreground: #1a1814;
+  --color-fd-accent: #ebe8df;
+  --color-fd-accent-foreground: #1a1814;
+  --color-fd-ring: #c2410c;
+
+  --pr-accent: #c2410c;
+  --pr-accent-soft: rgb(194 65 12 / 0.1);
+  --pr-ink-soft: #a8a396;
+  --pr-grid: rgb(26 24 20 / 0.06);
+  --pr-bar-muted: #c9c4b8;
+}
+
+.dark {
+  --color-fd-background: #0f0e0c;
+  --color-fd-foreground: #ece9e2;
+  --color-fd-muted: #1b1a17;
+  --color-fd-muted-foreground: #9c978c;
+  --color-fd-popover: #161512;
+  --color-fd-popover-foreground: #ece9e2;
+  --color-fd-card: #151411;
+  --color-fd-card-foreground: #ece9e2;
+  --color-fd-border: #2a2823;
+  --color-fd-primary: #f97340;
+  --color-fd-primary-foreground: #1a0d06;
+  --color-fd-secondary: #1b1a17;
+  --color-fd-secondary-foreground: #ece9e2;
+  --color-fd-accent: #24221e;
+  --color-fd-accent-foreground: #ece9e2;
+  --color-fd-ring: #f97340;
+
+  --pr-accent: #f97340;
+  --pr-accent-soft: rgb(249 115 64 / 0.12);
+  --pr-ink-soft: #5d5950;
+  --pr-grid: rgb(236 233 226 / 0.05);
+  --pr-bar-muted: #4a463e;
+}
+
+/* neutral.css sets cool grays on the dark sidebar; keep them warm. */
+.dark #nd-sidebar {
+  --color-fd-muted: #1f1d1a;
+  --color-fd-secondary: #221f1b;
+  --color-fd-muted-foreground: #a39e93;
 }
 
 @layer base {
   body {
     min-height: 100vh;
+    font-feature-settings: "ss01", "cv11";
+    -webkit-font-smoothing: antialiased;
+  }
+
+  ::selection {
+    background: var(--pr-accent-soft);
   }
 }
 
+/* Docs pages: tighter headings, mono accents, accent-marked active link. */
 @layer components {
-  .docs-lab-grid {
-    position: relative;
-    overflow: hidden;
+  #nd-page h1 {
+    letter-spacing: -0.03em;
   }
 
-  .docs-lab-grid::before {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background-image:
-      linear-gradient(
-        to right,
-        color-mix(in srgb, var(--fd-border) 55%, transparent) 1px,
-        transparent 1px
-      ),
-      linear-gradient(
-        to bottom,
-        color-mix(in srgb, var(--fd-border) 55%, transparent) 1px,
-        transparent 1px
-      );
-    background-size: 42px 42px;
-    mask-image: radial-gradient(circle at center, black 40%, transparent 92%);
-    opacity: 0.34;
+  .prose :where(h2, h3) {
+    letter-spacing: -0.02em;
   }
 
-  .docs-lab-shell {
-    position: relative;
-    overflow: hidden;
-    border: 1px solid color-mix(in srgb, var(--fd-border) 82%, transparent);
-    background: linear-gradient(
-      135deg,
-      color-mix(in srgb, var(--fd-card) 92%, white 8%),
-      color-mix(in srgb, var(--fd-card) 98%, transparent) 45%,
-      color-mix(in srgb, var(--fd-card) 88%, var(--docs-lab-accent-soft) 12%)
-    );
-    box-shadow:
-      0 24px 56px rgb(15 23 42 / 0.09),
-      inset 0 1px 0 rgb(255 255 255 / 0.08);
-    backdrop-filter: blur(14px);
+  .prose :where(code):not(:where(pre *)) {
+    font-size: 0.86em;
   }
 
-  .dark .docs-lab-shell {
-    box-shadow:
-      0 24px 56px rgb(2 6 23 / 0.35),
-      inset 0 1px 0 rgb(255 255 255 / 0.03);
-  }
-
-  .docs-lab-shell::after {
-    content: "";
-    position: absolute;
-    inset: 0;
-    pointer-events: none;
-    background: linear-gradient(
-      135deg,
-      rgb(255 255 255 / 0.16),
-      transparent 28%,
-      transparent 72%,
-      rgb(15 23 42 / 0.04)
-    );
-  }
-
-  .docs-lab-label {
-    font-size: 0.72rem;
+  #nd-sidebar a[data-active="true"] {
+    color: var(--pr-accent);
     font-weight: 500;
-    letter-spacing: 0.2em;
+  }
+
+  #nd-sidebar p {
+    font-family: var(--font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: color-mix(in srgb, var(--fd-muted-foreground) 88%, transparent);
   }
+}
 
-  .docs-lab-kicker {
-    font-size: 0.75rem;
-    font-weight: 600;
-    letter-spacing: 0.28em;
+/* Landing page */
+@layer components {
+  .pr-eyebrow {
+    font-family: var(--font-mono);
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
     text-transform: uppercase;
-    color: var(--docs-lab-accent);
+    color: var(--color-fd-muted-foreground);
   }
 
-  .docs-lab-rule {
-    height: 1px;
-    background: linear-gradient(
-      90deg,
-      transparent,
-      color-mix(in srgb, var(--fd-border) 90%, transparent) 18%,
-      color-mix(in srgb, var(--fd-border) 90%, transparent) 82%,
-      transparent
-    );
+  .pr-dotgrid {
+    background-image: radial-gradient(var(--pr-grid) 1px, transparent 1px);
+    background-size: 16px 16px;
   }
 
-  .docs-lab-stat {
-    border: 1px solid color-mix(in srgb, var(--fd-border) 82%, transparent);
-    background: color-mix(in srgb, var(--fd-card) 92%, transparent);
+  .pr-scan {
+    animation: pr-scan 6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+    transform-box: view-box;
+    transform-origin: 0 0;
+  }
+
+  .pr-scanline {
+    animation: pr-scanline 6s cubic-bezier(0.65, 0, 0.35, 1) infinite;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .pr-scan,
+    .pr-scanline {
+      animation: none;
+    }
+  }
+}
+
+@keyframes pr-scan {
+  0% {
+    transform: scaleY(0);
+  }
+  70%,
+  88% {
+    transform: scaleY(1);
+  }
+  100% {
+    transform: scaleY(1);
+    opacity: 0;
+  }
+}
+
+@keyframes pr-scanline {
+  0% {
+    transform: translateY(0);
+    opacity: 1;
+  }
+  70% {
+    transform: translateY(var(--pr-scan-distance));
+    opacity: 1;
+  }
+  76%,
+  100% {
+    transform: translateY(var(--pr-scan-distance));
+    opacity: 0;
   }
 }
