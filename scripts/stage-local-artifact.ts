@@ -1,7 +1,7 @@
 import { copyFileSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { resolve } from "node:path";
 
-import { getTargetDescriptor, repoRoot } from "./pdfium.ts";
+import { getTargetDescriptor, isMusl, repoRoot } from "./pdfium.ts";
 
 type LocalTarget = {
   artifactDirName: string;
@@ -43,8 +43,22 @@ const LOCAL_TARGETS: Partial<
   },
 };
 
+const LINUX_MUSL_TARGETS: Partial<Record<NodeJS.Architecture, LocalTarget>> = {
+  arm64: {
+    artifactDirName: "linux-arm64-musl",
+    binaryFileName: "pdf-raster.linux-arm64-musl.node",
+  },
+  x64: {
+    artifactDirName: "linux-x64-musl",
+    binaryFileName: "pdf-raster.linux-x64-musl.node",
+  },
+};
+
 function getLocalTarget(): LocalTarget {
-  const target = LOCAL_TARGETS[process.platform]?.[process.arch];
+  const targets = isMusl()
+    ? LINUX_MUSL_TARGETS
+    : LOCAL_TARGETS[process.platform];
+  const target = targets?.[process.arch];
 
   if (!target) {
     throw new Error(

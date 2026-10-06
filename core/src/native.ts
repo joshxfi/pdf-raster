@@ -237,6 +237,22 @@ function requirePackageLinuxX64() {
   return loadRuntimeBinding("pdf-raster-linux-x64-gnu");
 }
 
+function requireLocalLinuxArm64Musl() {
+  return loadRuntimeBinding("../pdf-raster.linux-arm64-musl.node");
+}
+
+function requirePackageLinuxArm64Musl() {
+  return loadRuntimeBinding("pdf-raster-linux-arm64-musl");
+}
+
+function requireLocalLinuxX64Musl() {
+  return loadRuntimeBinding("../pdf-raster.linux-x64-musl.node");
+}
+
+function requirePackageLinuxX64Musl() {
+  return loadRuntimeBinding("pdf-raster-linux-x64-musl");
+}
+
 function requireLocalWin32Arm64() {
   return loadRuntimeBinding("../pdf-raster.win32-arm64-msvc.node");
 }
@@ -265,6 +281,18 @@ function loadTargetBinding(): LoadedBinding | null {
           return null;
       }
     case "linux":
+      if (isMusl()) {
+        switch (process.arch) {
+          case "arm64":
+            return (
+              requireLocalLinuxArm64Musl() ?? requirePackageLinuxArm64Musl()
+            );
+          case "x64":
+            return requireLocalLinuxX64Musl() ?? requirePackageLinuxX64Musl();
+          default:
+            return null;
+        }
+      }
       switch (process.arch) {
         case "arm64":
           return requireLocalLinuxArm64() ?? requirePackageLinuxArm64();
@@ -294,14 +322,6 @@ function loadNativeBinding(): LoadedBinding {
   if (explicit) {
     setPdfiumLibraryPath(explicit.pdfiumPath);
     return explicit;
-  }
-
-  if (process.platform === "linux") {
-    if (isMusl()) {
-      throw new Error(
-        "Failed to load the native pdf-raster binding for linux musl. Prebuilt musl artifacts are not published for this package.",
-      );
-    }
   }
 
   const loaded = loadTargetBinding();

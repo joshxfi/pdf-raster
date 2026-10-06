@@ -35,15 +35,17 @@ bun add pdf-raster
 ## Requirements
 
 - Node.js 24 or newer, or Bun
-- macOS, Linux with glibc, or Windows, on x64 or arm64
+- macOS, Linux, or Windows, on x64 or arm64
 
-There is no prebuilt package for Alpine Linux or other musl-based
-distributions.
+On Linux there are separate packages for glibc distributions, such as Debian
+and Ubuntu, and for musl distributions, such as Alpine. The `node:24-alpine`
+Docker image works without extra packages.
 
 ## What gets installed
 
 `pdf-raster` lists one optional dependency per platform, such as
-`pdf-raster-darwin-arm64` or `pdf-raster-linux-x64-gnu`. Your package manager
+`pdf-raster-darwin-arm64`, `pdf-raster-linux-x64-gnu` or
+`pdf-raster-linux-x64-musl`. Your package manager
 installs only the one that matches your machine. That package holds the
 compiled addon and the PDFium shared library it loads, so you do not install
 PDFium yourself.
