@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowUpRight, FileText } from "lucide-react";
+import { ArrowUpRight, Download, FileText } from "lucide-react";
 import Image from "next/image";
 import type { ReactElement } from "react";
 import { useRef, useState, useTransition } from "react";
@@ -13,6 +13,8 @@ import {
   parsePageSelection,
   type SupportedDpi,
 } from "@/app/lib/demo-config";
+import { baseName, downloadAllPages, pageFileName } from "@/app/lib/download";
+import { PagePreview } from "@/app/page-preview";
 import { Logo } from "@/components/logo";
 import { cn } from "@/lib/utils";
 
@@ -96,6 +98,8 @@ export function ConversionWorkbench(): ReactElement {
   const [stats, setStats] = useState<RunStats | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
+  const [previewIndex, setPreviewIndex] = useState<number | null>(null);
+  const [resultBase, setResultBase] = useState("document");
   const [isPending, startTransition] = useTransition();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -147,6 +151,8 @@ export function ConversionWorkbench(): ReactElement {
     }
 
     if (isConvertResponse(payload)) {
+      setPreviewIndex(null);
+      setResultBase(baseName(target.name));
       setPages(payload.pages);
       setStats({ ...payload.benchmark, roundTripMs });
     }
@@ -318,31 +324,76 @@ export function ConversionWorkbench(): ReactElement {
             </span>
           </button>
         ) : (
-          <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-x-4 gap-y-6">
-            {pages.map((page) => (
-              <li key={`${page.pageIndex}-${page.width}-${page.height}`}>
-                <figure className="flex flex-col gap-2">
-                  <Image
-                    alt={`Page ${page.pageIndex + 1} rendered by pdf-raster`}
-                    className="w-full border border-border bg-white"
-                    height={page.height}
-                    sizes="(max-width: 640px) 50vw, 240px"
-                    src={page.src}
-                    unoptimized
-                    width={page.width}
-                  />
-                  <figcaption className="flex justify-between gap-2 text-xs">
-                    <span>Page {page.pageIndex + 1}</span>
-                    <span className="font-mono text-muted-foreground">
-                      {page.width} × {page.height}
-                    </span>
-                  </figcaption>
-                </figure>
-              </li>
-            ))}
-          </ul>
+          <>
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <p className="text-sm text-muted-foreground">
+                {pages.length} {pages.length === 1 ? "page" : "pages"}. Click
+                one to preview it.
+              </p>
+              <button
+                type="button"
+                onClick={() => downloadAllPages(pages, resultBase)}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border border-border px-3 text-sm transition-colors hover:bg-accent"
+              >
+                <Download className="size-4" />
+                Download all (.zip)
+              </button>
+            </div>
+            <ul className="grid grid-cols-[repeat(auto-fill,minmax(200px,1fr))] gap-x-4 gap-y-6">
+              {pages.map((page, index) => (
+                <li key={`${page.pageIndex}-${page.width}-${page.height}`}>
+                  <figure className="flex flex-col gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setPreviewIndex(index)}
+                      aria-label={`Preview page ${page.pageIndex + 1}`}
+                      className="block cursor-zoom-in border border-border bg-white transition-[border-color] hover:border-foreground/40 focus-visible:border-ring"
+                    >
+                      <Image
+                        alt={`Page ${page.pageIndex + 1} rendered by pdf-raster`}
+                        className="w-full"
+                        height={page.height}
+                        sizes="(max-width: 640px) 50vw, 240px"
+                        src={page.src}
+                        unoptimized
+                        width={page.width}
+                      />
+                    </button>
+                    <figcaption className="flex items-center justify-between gap-2 text-xs">
+                      <span>
+                        Page {page.pageIndex + 1}{" "}
+                        <span className="font-mono text-muted-foreground">
+                          {page.width} × {page.height}
+                        </span>
+                      </span>
+                      <a
+                        href={page.src}
+                        download={pageFileName(
+                          resultBase,
+                          page.pageIndex,
+                          pages,
+                        )}
+                        aria-label={`Download page ${page.pageIndex + 1}`}
+                        className="inline-flex size-7 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
+                      >
+                        <Download className="size-3.5" />
+                      </a>
+                    </figcaption>
+                  </figure>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </main>
+
+      <PagePreview
+        pages={pages}
+        index={previewIndex}
+        base={resultBase}
+        onIndexChange={setPreviewIndex}
+        onClose={() => setPreviewIndex(null)}
+      />
 
       {isDragging ? (
         <div className="pointer-events-none fixed inset-2 z-20 grid place-items-center rounded-md border-2 border-dashed border-primary bg-background/80 text-sm font-medium">
