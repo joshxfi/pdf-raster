@@ -31,14 +31,40 @@ type PdfLoadingTask = {
 };
 
 export type CanvasLike = {
+  width: number;
+  height: number;
   getContext(type: "2d"): unknown;
   toBuffer(mimeType: string): Buffer;
+};
+
+export type CanvasAndContext = {
+  canvas: CanvasLike | null;
+  context: unknown;
+};
+
+/**
+ * Factory pdf.js uses for its scratch canvases (images, patterns, masks).
+ * Its scratch canvases are drawn onto the page canvas, so they must come from
+ * the same canvas library.
+ */
+export type PdfjsCanvasFactory = new (options: {
+  enableHWA?: boolean;
+}) => {
+  create(width: number, height: number): CanvasAndContext;
+  reset(
+    canvasAndContext: CanvasAndContext,
+    width: number,
+    height: number,
+  ): void;
+  destroy(canvasAndContext: CanvasAndContext): void;
 };
 
 export type PdfjsCanvasBackend = {
   name: string;
   installGlobals(): void;
   createCanvas(width: number, height: number): CanvasLike;
+  /** Defaults to pdf.js's Node factory, which always uses @napi-rs/canvas. */
+  CanvasFactory?: PdfjsCanvasFactory;
 };
 
 function resolvePageSelection(pageCount: number, pages?: number[]): number[] {
@@ -98,6 +124,7 @@ export async function runPdfjsBenchmark(
     useSystemFonts: true,
     isEvalSupported: false,
     useWorkerFetch: false,
+    ...(backend.CanvasFactory ? { CanvasFactory: backend.CanvasFactory } : {}),
   } as Parameters<typeof getDocument>[0];
   const loadingTask = getDocument(documentOptions) as PdfLoadingTask;
   const document = await loadingTask.promise;
