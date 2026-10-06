@@ -1,5 +1,6 @@
 "use client";
 
+import { ArrowUpRight, FileText, Upload } from "lucide-react";
 import Image from "next/image";
 import type { ReactElement } from "react";
 import { useRef, useState, useTransition } from "react";
@@ -9,11 +10,15 @@ import {
   DEFAULT_PAGE_INPUT,
   DPI_OPTIONS,
   MAX_SELECTED_PAGES,
+  parsePageSelection,
   type SupportedDpi,
 } from "@/app/lib/demo-config";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import { Logo } from "@/components/logo";
 import { Input } from "@/components/ui/input";
+import { cn } from "@/lib/utils";
+
+const DOCS_URL = "https://pdf-raster.omsimos.com";
+const REPO_URL = "https://github.com/joshxfi/pdf-raster";
 
 type ConvertedPreviewPage = {
   pageIndex: number;
@@ -74,6 +79,20 @@ function formatFileSize(bytes: number) {
   return `${value.toFixed(value >= 100 ? 0 : 1)} ${units[unitIndex]}`;
 }
 
+/** The convert() call the route makes for the current form state. */
+function describeCall(pagesInput: string, dpi: SupportedDpi) {
+  const parsed = parsePageSelection(pagesInput);
+  const pages =
+    parsed.ok && parsed.pages ? `[${parsed.pages.join(", ")}]` : null;
+
+  return [
+    "const pages = await convert(bytes, {",
+    ...(pages ? [`  pages: ${pages},`] : []),
+    `  dpi: ${dpi},`,
+    "});",
+  ].join("\n");
+}
+
 export function ConversionWorkbench(): ReactElement {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [pagesInput, setPagesInput] = useState(DEFAULT_PAGE_INPUT);
@@ -95,7 +114,7 @@ export function ConversionWorkbench(): ReactElement {
 
   async function runConversion() {
     if (!selectedFile) {
-      setErrorMessage("Choose a PDF before running the demo.");
+      setErrorMessage("Choose a PDF first.");
       return;
     }
 
@@ -109,22 +128,29 @@ export function ConversionWorkbench(): ReactElement {
     formData.set("dpi", String(dpi));
 
     const requestStart = performance.now();
-    const response = await fetch("/api/convert", {
-      method: "POST",
-      body: formData,
-    });
+    let response: Response;
+    try {
+      response = await fetch("/api/convert", {
+        method: "POST",
+        body: formData,
+      });
+    } catch {
+      setLastRunFileName(null);
+      setErrorMessage("Could not reach the server.");
+      return;
+    }
     const clientRequestMs = performance.now() - requestStart;
 
     const payload = await response.json().catch(() => null);
 
     if (!response.ok) {
       setLastRunFileName(null);
-      setBenchmark(null);
       setErrorMessage(
-        isErrorResponse(payload)
-          ? (payload.message ??
-              "Conversion failed before the preview could render.")
-          : "Conversion failed before the preview could render.",
+        isErrorResponse(payload) && payload.message
+          ? payload.code
+            ? `${payload.code}: ${payload.message}`
+            : payload.message
+          : "Conversion failed.",
       );
       return;
     }
@@ -135,65 +161,77 @@ export function ConversionWorkbench(): ReactElement {
         ...payload.benchmark,
         roundTripMs: clientRequestMs,
       });
-    } else {
-      setResults([]);
-      setBenchmark(null);
     }
     setLastRunFileName(selectedFile.name);
   }
 
   const stats = benchmark
     ? [
+        { label: "convert()", value: `${benchmark.convertMs.toFixed(0)} ms` },
+        { label: "Server", value: `${benchmark.serverMs.toFixed(0)} ms` },
         {
           label: "Round trip",
           value: `${benchmark.roundTripMs.toFixed(0)} ms`,
         },
-        {
-          label: "Server",
-          value: `${benchmark.serverMs.toFixed(0)} ms`,
-        },
-        {
-          label: "Convert",
-          value: `${benchmark.convertMs.toFixed(0)} ms`,
-        },
-        {
-          label: "Pages",
-          value: String(benchmark.pagesRendered),
-        },
-        {
-          label: "Input",
-          value: formatFileSize(benchmark.inputBytes),
-        },
-        {
-          label: "Output",
-          value: formatFileSize(benchmark.outputBytes),
-        },
+        { label: "Pages", value: String(benchmark.pagesRendered) },
+        { label: "PDF", value: formatFileSize(benchmark.inputBytes) },
+        { label: "PNG output", value: formatFileSize(benchmark.outputBytes) },
       ]
     : [];
 
   return (
-    <section className="grid min-h-screen gap-4 p-4 sm:p-5 lg:h-full lg:min-h-0 lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-5 lg:p-5">
-      <aside className="lab-shell min-h-0 rounded-[2rem] p-5 sm:p-6">
-        <div className="flex h-full flex-col gap-6 lg:overflow-y-auto lg:pr-1">
-          <div className="flex items-start justify-between gap-4">
-            <div className="space-y-2">
-              <p className="lab-grid-label">Example / convert()</p>
-              <h1 className="text-[clamp(2rem,2.8vw,3rem)] font-semibold tracking-[-0.08em]">
-                PDF to PNG
-              </h1>
-            </div>
-            <Badge className="rounded-none border border-[var(--example-border)] bg-[var(--example-panel-strong)] px-3 py-1 font-mono text-[0.68rem] uppercase tracking-[0.2em] text-[var(--example-muted)]">
-              Node
-            </Badge>
+    <div className="flex min-h-screen flex-col lg:h-screen">
+      <header className="border-b border-border">
+        <div className="flex h-14 items-center justify-between gap-4 px-4 sm:px-6">
+          <div className="flex items-center gap-3">
+            <a
+              href={DOCS_URL}
+              className="inline-flex items-center gap-2 font-semibold tracking-tight"
+            >
+              <Logo className="size-5 text-primary" />
+              pdf-raster
+            </a>
+            <span className="pr-eyebrow rounded-full border border-border px-2 py-0.5">
+              Example
+            </span>
+          </div>
+          <nav className="flex items-center gap-1 text-sm text-muted-foreground">
+            <a
+              href={`${DOCS_URL}/docs/examples-nextjs`}
+              className="rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent hover:text-foreground"
+            >
+              Docs
+            </a>
+            <a
+              href={`${REPO_URL}/tree/main/example`}
+              className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 transition-colors hover:bg-accent hover:text-foreground"
+            >
+              Source
+              <ArrowUpRight className="size-3.5" />
+            </a>
+          </nav>
+        </div>
+      </header>
+
+      <div className="grid flex-1 gap-4 p-4 sm:p-6 lg:min-h-0 lg:grid-cols-[360px_minmax(0,1fr)] lg:gap-6">
+        <aside className="pr-scroll flex min-h-0 flex-col gap-6 rounded-xl border border-border bg-card p-5 lg:overflow-y-auto">
+          <div className="flex flex-col gap-2">
+            <p className="pr-eyebrow">Next.js route handler</p>
+            <h1 className="text-3xl font-semibold tracking-[-0.03em]">
+              PDF to PNG
+            </h1>
+            <p className="text-sm leading-6 text-muted-foreground">
+              Upload a PDF. The route passes the bytes to <code>convert()</code>{" "}
+              and returns each page as a PNG data URL.
+            </p>
           </div>
 
           <label
             htmlFor="example-pdf-upload"
-            className={`relative overflow-hidden border border-[var(--example-border)] bg-[var(--example-panel-strong)] p-5 transition ${
-              isDragging
-                ? "border-[var(--example-accent)] bg-[var(--example-accent-soft)]"
-                : ""
-            }`}
+            className={cn(
+              "pr-dotgrid flex cursor-pointer flex-col items-center gap-3 rounded-lg border border-dashed border-border px-4 py-6 text-center transition-colors hover:border-primary/60",
+              isDragging && "border-primary bg-[var(--pr-accent-soft)]",
+            )}
             onDragEnter={(event) => {
               event.preventDefault();
               setIsDragging(true);
@@ -217,49 +255,38 @@ export function ConversionWorkbench(): ReactElement {
               ref={fileInputRef}
               type="file"
               accept="application/pdf,.pdf"
-              className="hidden"
+              className="sr-only"
               onChange={(event) =>
                 acceptFile(event.currentTarget.files?.[0] ?? null)
               }
             />
-            <div className="space-y-4">
-              <div>
-                <p className="lab-grid-label">Upload</p>
-                <p className="mt-3 text-sm leading-6 text-[var(--example-muted)]">
-                  Drop a PDF here or browse. The file stays in-memory and the
-                  route returns PNG previews directly.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                className="w-full border border-[var(--example-ink)] bg-[var(--example-ink)] px-4 py-3 text-left text-sm font-medium text-[var(--example-canvas)] transition-colors hover:bg-[var(--example-accent)]"
-                onClick={() => fileInputRef.current?.click()}
-              >
-                {selectedFile ? "Replace PDF" : "Select PDF"}
-              </button>
-
-              <div className="border border-[var(--example-border)] bg-[var(--example-canvas)]/60 p-4">
-                {selectedFile ? (
-                  <div className="space-y-1">
-                    <p className="truncate text-sm font-medium text-[var(--example-ink)]">
-                      {selectedFile.name}
-                    </p>
-                    <p className="text-sm text-[var(--example-muted)]">
-                      {formatFileSize(selectedFile.size)}
-                    </p>
-                  </div>
-                ) : (
-                  <p className="text-sm text-[var(--example-muted)]">
-                    No PDF selected yet.
+            {selectedFile ? (
+              <>
+                <FileText className="size-5 text-primary" />
+                <div className="min-w-0 max-w-full">
+                  <p className="truncate text-sm font-medium">
+                    {selectedFile.name}
                   </p>
-                )}
-              </div>
-            </div>
+                  <p className="font-mono text-xs text-muted-foreground">
+                    {formatFileSize(selectedFile.size)} · click to replace
+                  </p>
+                </div>
+              </>
+            ) : (
+              <>
+                <Upload className="size-5 text-muted-foreground" />
+                <div>
+                  <p className="text-sm font-medium">Drop a PDF here</p>
+                  <p className="text-xs text-muted-foreground">
+                    or click to browse, up to 20 MB
+                  </p>
+                </div>
+              </>
+            )}
           </label>
 
           <form
-            className="grid gap-5"
+            className="flex flex-col gap-5"
             onSubmit={(event) => {
               event.preventDefault();
               startTransition(() => {
@@ -267,11 +294,8 @@ export function ConversionWorkbench(): ReactElement {
               });
             }}
           >
-            <div className="grid gap-2">
-              <label
-                htmlFor="page-selection"
-                className="lab-grid-label text-[var(--example-ink)]"
-              >
+            <div className="flex flex-col gap-2">
+              <label htmlFor="page-selection" className="pr-eyebrow">
                 Pages
               </label>
               <Input
@@ -279,151 +303,119 @@ export function ConversionWorkbench(): ReactElement {
                 value={pagesInput}
                 onChange={(event) => setPagesInput(event.target.value)}
                 placeholder="All pages"
-                className="rounded-none border-[var(--example-border)] bg-[var(--example-panel-strong)] font-mono"
+                className="h-10 rounded-md bg-background font-mono shadow-none"
               />
-              <p className="text-sm leading-6 text-[var(--example-muted)]">
-                Leave blank to render the full document, or enter
-                comma-separated page numbers. Manual selection is capped at{" "}
-                {MAX_SELECTED_PAGES} pages in the preview.
+              <p className="text-xs leading-5 text-muted-foreground">
+                Page numbers start at 1, separated by commas, up to{" "}
+                {MAX_SELECTED_PAGES}. Leave it empty to render every page.
               </p>
             </div>
 
-            <div className="grid gap-3">
-              <span className="lab-grid-label text-[var(--example-ink)]">
-                DPI
-              </span>
-              <div className="grid grid-cols-3 gap-2">
-                {DPI_OPTIONS.map((option) => {
-                  const active = option === dpi;
-                  return (
-                    <Button
-                      key={option}
-                      type="button"
-                      variant={active ? "default" : "outline"}
-                      className={`rounded-none px-0 font-mono ${
-                        active
-                          ? "border-[var(--example-ink)] bg-[var(--example-ink)] text-[var(--example-canvas)] hover:bg-[var(--example-accent)]"
-                          : "border-[var(--example-border)] bg-[var(--example-panel-strong)] text-[var(--example-ink)] hover:bg-[var(--example-accent-soft)]"
-                      }`}
-                      onClick={() => setDpi(option)}
-                    >
-                      {option}
-                    </Button>
-                  );
-                })}
+            <fieldset className="flex flex-col gap-2">
+              <legend className="pr-eyebrow mb-2">DPI</legend>
+              <div className="grid grid-cols-3 rounded-md border border-border bg-background p-0.5">
+                {DPI_OPTIONS.map((option) => (
+                  <button
+                    key={option}
+                    type="button"
+                    aria-pressed={option === dpi}
+                    onClick={() => setDpi(option)}
+                    className={cn(
+                      "rounded-[5px] py-1.5 font-mono text-sm text-muted-foreground transition-colors hover:text-foreground",
+                      option === dpi &&
+                        "bg-card text-foreground shadow-[0_0_0_1px_var(--color-border)]",
+                    )}
+                  >
+                    {option}
+                  </button>
+                ))}
               </div>
+            </fieldset>
+
+            <div className="flex flex-col gap-2">
+              <span className="pr-eyebrow">Server call</span>
+              <pre className="overflow-x-auto rounded-md border border-border bg-background px-3 py-2.5 font-mono text-xs leading-5">
+                {describeCall(pagesInput, dpi)}
+              </pre>
             </div>
 
-            <Button
+            <button
               type="submit"
               disabled={isPending || !selectedFile}
-              className="rounded-none border border-[var(--example-ink)] bg-[var(--example-accent)] px-5 text-[var(--example-ink)] hover:bg-[var(--example-ink)] hover:text-[var(--example-canvas)] disabled:border-[var(--example-border)] disabled:bg-[var(--example-panel)] disabled:text-[var(--example-muted)]"
+              className="inline-flex h-10 items-center justify-center rounded-md bg-primary px-4 text-sm font-medium text-primary-foreground transition-[opacity,transform] hover:opacity-90 active:scale-[0.98] disabled:pointer-events-none disabled:opacity-40"
             >
-              {isPending ? "Rendering previews..." : "Convert"}
-            </Button>
+              {isPending ? "Converting…" : "Convert"}
+            </button>
           </form>
 
           {errorMessage ? (
-            <div className="border border-[#b93c0d]/25 bg-[#fff1eb] p-4 text-sm leading-6 text-[#7a2704]">
-              <div className="lab-grid-label text-[#7a2704]">
-                Conversion error
-              </div>
-              <p className="mt-2">{errorMessage}</p>
+            <div
+              role="alert"
+              className="rounded-md border border-destructive/30 bg-destructive/5 px-3 py-2.5 text-sm leading-6 text-destructive"
+            >
+              {errorMessage}
             </div>
           ) : null}
-        </div>
-      </aside>
+        </aside>
 
-      <section className="lab-shell min-h-[50vh] min-w-0 rounded-[2rem] p-5 sm:p-6 lg:h-full lg:min-h-0">
-        <div className="flex h-full min-h-0 flex-col gap-5">
-          <div className="flex flex-wrap items-end justify-between gap-4">
-            <div>
-              <p className="lab-grid-label">Preview</p>
-              <h2 className="lab-section-title mt-2">Converted pages</h2>
-            </div>
-            <div className="text-right">
-              {lastRunFileName ? (
-                <>
-                  <p className="lab-grid-label">Last run</p>
-                  <p className="mt-2 max-w-[18rem] truncate text-sm text-[var(--example-muted)]">
-                    {lastRunFileName}
-                  </p>
-                </>
-              ) : (
-                <p className="text-sm text-[var(--example-muted)]">
-                  Render a PDF to see previews.
-                </p>
-              )}
-            </div>
+        <section className="flex min-h-[50vh] min-w-0 flex-col gap-4 lg:min-h-0">
+          <div className="flex flex-wrap items-baseline justify-between gap-3">
+            <h2 className="text-xl font-semibold tracking-[-0.02em]">
+              Rendered pages
+            </h2>
+            <p className="max-w-[20rem] truncate font-mono text-xs text-muted-foreground">
+              {lastRunFileName ?? "nothing rendered yet"}
+            </p>
           </div>
 
           {benchmark ? (
-            <details className="group border border-[var(--example-border)] bg-[var(--example-panel-strong)]">
-              <summary className="flex cursor-pointer list-none items-center justify-between gap-4 px-4 py-3">
-                <div>
-                  <p className="lab-grid-label">Benchmark</p>
-                  <p className="mt-1 text-sm text-[var(--example-muted)]">
-                    Conversion timing and payload size
-                  </p>
+            <dl className="grid grid-cols-3 overflow-hidden rounded-xl border border-border bg-border gap-px md:grid-cols-6">
+              {stats.map((stat) => (
+                <div key={stat.label} className="bg-card px-4 py-3">
+                  <dt className="pr-eyebrow normal-case tracking-normal">
+                    {stat.label}
+                  </dt>
+                  <dd className="mt-1 text-lg font-semibold tabular-nums tracking-tight">
+                    {stat.value}
+                  </dd>
                 </div>
-                <span className="font-mono text-xs uppercase tracking-[0.2em] text-[var(--example-muted)] transition-transform group-open:rotate-45">
-                  +
-                </span>
-              </summary>
-              <div className="grid gap-3 border-t border-[var(--example-border)] p-4 md:grid-cols-2 xl:grid-cols-3">
-                {stats.map((stat) => (
-                  <div
-                    key={stat.label}
-                    className="border border-[var(--example-border)] bg-[var(--example-canvas)]/55 px-4 py-3"
-                  >
-                    <p className="lab-grid-label">{stat.label}</p>
-                    <p className="mt-2 text-lg font-semibold tracking-[-0.05em]">
-                      {stat.value}
-                    </p>
-                  </div>
-                ))}
-              </div>
-            </details>
+              ))}
+            </dl>
           ) : null}
 
           {results.length === 0 ? (
-            <div className="grid flex-1 min-h-[26rem] place-items-center border border-dashed border-[var(--example-border)] bg-[var(--example-panel-strong)] p-8 text-center">
-              <div className="max-w-sm space-y-3">
-                <p className="lab-grid-label">Awaiting output</p>
-                <p className="text-2xl font-semibold tracking-[-0.05em]">
-                  Upload a PDF and convert a few pages.
+            <div className="pr-dotgrid grid min-h-[26rem] flex-1 place-items-center rounded-xl border border-dashed border-border p-8 text-center">
+              <div className="flex max-w-sm flex-col items-center gap-3">
+                <Logo className="size-8 text-muted-foreground/60" />
+                <p className="text-lg font-semibold tracking-tight">
+                  {isPending ? "Rendering…" : "No pages yet"}
                 </p>
-                <p className="text-sm leading-6 text-[var(--example-muted)]">
-                  The preview pane will fill with PNG page images and their
-                  render metadata.
+                <p className="text-sm leading-6 text-muted-foreground">
+                  Choose a PDF and press Convert. Each page shows up here with
+                  its size and DPI.
                 </p>
               </div>
             </div>
           ) : (
-            <div className="lab-scroll flex-1 overflow-y-auto pr-1">
-              <div className="grid gap-5 xl:grid-cols-2">
+            <div className="pr-scroll flex-1 overflow-y-auto lg:min-h-0">
+              <div className="grid gap-4 xl:grid-cols-2">
                 {results.map((page) => (
-                  <article
+                  <figure
                     key={`${page.pageIndex}-${page.width}-${page.height}`}
-                    className="overflow-hidden border border-[var(--example-border)] bg-[var(--example-panel-strong)]"
+                    className="overflow-hidden rounded-xl border border-border bg-card"
                   >
-                    <div className="flex items-center justify-between border-b border-[var(--example-border)] px-4 py-3">
-                      <div>
-                        <p className="lab-grid-label">
-                          Page {page.pageIndex + 1}
-                        </p>
-                        <p className="mt-1 text-sm text-[var(--example-muted)]">
-                          {page.width} × {page.height}px
-                        </p>
-                      </div>
-                      <Badge className="rounded-none border border-[var(--example-border)] bg-transparent px-2 py-1 font-mono text-[0.68rem] uppercase tracking-[0.2em] text-[var(--example-muted)]">
-                        {page.dpi} DPI
-                      </Badge>
-                    </div>
-                    <div className="bg-[#f6f2e7] p-4">
+                    <figcaption className="flex items-center justify-between gap-3 border-b border-border px-4 py-2.5">
+                      <span className="text-sm font-medium">
+                        Page {page.pageIndex + 1}
+                      </span>
+                      <span className="font-mono text-xs text-muted-foreground">
+                        {page.width} × {page.height} · {page.dpi} dpi
+                      </span>
+                    </figcaption>
+                    <div className="pr-dotgrid bg-muted/40 p-4">
                       <Image
-                        alt={`Converted preview for page ${page.pageIndex + 1}`}
-                        className="w-full border border-[var(--example-border)] bg-white shadow-[0_14px_35px_rgba(16,17,20,0.08)]"
+                        alt={`Page ${page.pageIndex + 1} rendered by pdf-raster`}
+                        className="w-full rounded-[3px] bg-[var(--pr-paper)] shadow-[0_1px_0_var(--color-border),0_16px_32px_-16px_rgb(0_0_0/0.25)] ring-1 ring-border"
                         height={page.height}
                         sizes="(max-width: 1279px) 100vw, 50vw"
                         src={page.src}
@@ -431,27 +423,13 @@ export function ConversionWorkbench(): ReactElement {
                         width={page.width}
                       />
                     </div>
-                    <dl className="grid grid-cols-3 border-t border-[var(--example-border)] text-sm">
-                      <div className="border-r border-[var(--example-border)] px-4 py-3">
-                        <dt className="lab-grid-label">Index</dt>
-                        <dd className="mt-2 font-mono">{page.pageIndex}</dd>
-                      </div>
-                      <div className="border-r border-[var(--example-border)] px-4 py-3">
-                        <dt className="lab-grid-label">Width</dt>
-                        <dd className="mt-2 font-mono">{page.width}</dd>
-                      </div>
-                      <div className="px-4 py-3">
-                        <dt className="lab-grid-label">Height</dt>
-                        <dd className="mt-2 font-mono">{page.height}</dd>
-                      </div>
-                    </dl>
-                  </article>
+                  </figure>
                 ))}
               </div>
             </div>
           )}
-        </div>
-      </section>
-    </section>
+        </section>
+      </div>
+    </div>
   );
 }
