@@ -1,36 +1,34 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/create-next-app).
+# pdf-raster example
 
-## Getting Started
+A Next.js app that uploads a PDF, renders the selected pages to PNG with
+pdf-raster in a route handler, and shows each page with its size and the
+conversion timings. It uses the local `core/` workspace package, so it runs
+whatever you last built.
 
-First, run the development server:
+## Run it
+
+From the repository root:
 
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+bun install
+bun run pdfium:download
+bun run --filter pdf-raster build
+bun run --cwd example dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Then open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Files
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load Inter, a custom Google Font.
+| File | What it does |
+| :--- | :----------- |
+| `app/api/convert/route.ts` | Validates the upload, calls `convert()` and returns each page as a PNG data URL with timings |
+| `app/workbench.tsx` | The upload form, DPI control and page previews |
+| `app/lib/demo-config.ts` | DPI choices, the 6-page limit and page-number parsing |
+| `next.config.js` | Lists `pdf-raster` in `serverExternalPackages` so Next.js does not bundle the native addon |
 
-## Learn More
+The page numbers you type start at 1. The app converts them to the zero-based
+indices that `convert()` expects.
 
-To learn more about Next.js, take a look at the following resources:
-
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
-
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+To test the published npm package instead of the local build, use the
+`consumer/` app.
