@@ -4,84 +4,72 @@
 [![License](https://img.shields.io/github/license/joshxfi/pdf-raster)](https://github.com/joshxfi/pdf-raster/blob/main/LICENSE)
 [![Bun](https://img.shields.io/badge/Bun-%23282a36.svg?logo=bun&logoColor=white)](https://bun.sh)
 
-**Blazing fast, native PDF-to-image conversion for Node.js and Bun.**
+Render PDF pages to PNG, JPEG or WebP buffers in Node.js and Bun.
 
-`pdf-raster` renders PDF pages into high-quality image buffers using a
-high-performance Rust engine. Built with `napi-rs` and `PDFium`, it is
-optimized for server-side workflows like OCR pipelines, VLM (Vision Language
-Model) inputs, and document previews.
+pdf-raster runs PDFium, the PDF engine from Chromium, inside a native addon
+written in Rust with napi-rs. One function, `convert()`, takes a file path or
+PDF bytes and returns one encoded image per page. In the repository benchmark
+it renders a 300 DPI letter page in about 10 ms on an Apple M4, 12.7 to 17.4
+times faster than pdfjs-dist with `@napi-rs/canvas`.
 
-[**Explore Documentation**](https://pdf-raster.omsimos.com/)
+[Documentation](https://pdf-raster.omsimos.com) ·
+[Quickstart](https://pdf-raster.omsimos.com/docs/quickstart) ·
+[npm](https://www.npmjs.com/package/pdf-raster)
 
----
-
-## ✨ Why pdf-raster?
-
-- 🚀 **High Performance:** 10.6–13.0× faster than `pdfjs-dist` + `@napi-rs/canvas` on 300 DPI letter pages (see [benchmark](#-performance-benchmark)).
-- 🦀 **Native Power:** Leverages Rust and PDFium for industry-standard rendering.
-- 🛠️ **Simple API:** A single `convert()` function handles everything.
-- 📦 **Memory Efficient:** Supports `Buffer` inputs for processing without temp files.
-- 🎨 **Flexible Output:** Native support for `png`, `jpeg`, and `webp`.
-
-## 📦 Install
+## Install
 
 ```bash
-# Using Bun
-bun add pdf-raster
-
-# Using PNPM
-pnpm add pdf-raster
-
-# Using NPM
 npm install pdf-raster
+# or
+pnpm add pdf-raster
+# or
+bun add pdf-raster
 ```
 
-## 📖 Quick Usage
+pdf-raster needs Node.js 24 or newer, or Bun. Prebuilt binaries cover macOS,
+Linux with glibc and Windows, on x64 and arm64. Each platform package includes
+its own PDFium library, so there is nothing else to install.
+
+## Usage
 
 ```ts
-import { convert } from "pdf-raster";
 import { writeFile } from "node:fs/promises";
+import { convert } from "pdf-raster";
 
-// Convert specific pages to high-quality WebP
-const [page] = await convert("./report.pdf", {
-  pages: [0], // 0-indexed page numbers
-  dpi: 300, // Higher DPI is useful for OCR and VLM inputs
+const pages = await convert("./report.pdf", {
+  pages: [0, 1], // zero-based
+  dpi: 300,
   outputFormat: "webp",
 });
 
-console.log(`Rendered page ${page.pageIndex} (${page.width}x${page.height})`);
-
-// page.data is a Buffer of the encoded image
-await writeFile("output.webp", page.data);
+for (const page of pages) {
+  console.log(page.pageIndex, page.mimeType, page.width, page.height);
+  await writeFile(`page-${page.pageIndex + 1}.webp`, page.data);
+}
 ```
 
-## 🛠 API Reference
+## API
 
 ### `convert(input, options?)`
 
-#### `input`
+`input` is a file path, `Buffer`, `Uint8Array` or `ArrayBuffer`.
 
-- **Type:** `string | Buffer | Uint8Array | ArrayBuffer`
-- **Description:** A file path to a PDF or an in-memory PDF byte source.
+| Option              | Type                        | Default     | Description |
+| :------------------ | :-------------------------- | :---------- | :---------- |
+| `pages`             | `number[]`                  | every page  | Zero-based page indices. The result follows this order. |
+| `dpi`               | `number`                    | `300`       | Render resolution. |
+| `outputFormat`      | `"png" \| "jpeg" \| "webp"` | `"png"`     | PNG and WebP are lossless. JPEG uses quality 75. |
+| `password`          | `string`                    |             | Password for an encrypted PDF. |
+| `crop`              | `{ x, y, width, height }`   |             | Rectangle to keep, in pixels of the rendered page. |
+| `renderAnnotations` | `boolean`                   | `true`      | Draw annotations and form field values. |
+| `maxPixels`         | `number`                    | no limit    | Largest allowed width × height per page. Larger pages throw `INVALID_OPTIONS`. |
 
-#### `options` (Optional)
-
-| Option              | Type                        | Default | Description                                         |
-| :------------------ | :-------------------------- | :------ | :-------------------------------------------------- |
-| `pages`             | `number[]`                  | `all`   | Specific pages to render, using 0-indexed values.   |
-| `dpi`               | `number`                    | `300`   | Resolution of the output image.                     |
-| `outputFormat`      | `"png" \| "jpeg" \| "webp"` | `"png"` | Encoding format for the returned buffers.           |
-| `password`          | `string`                    | `-`     | Password for encrypted PDFs.                        |
-| `crop`              | `{ x, y, width, height }`   | `-`     | Crop rectangle in rendered image pixel coordinates. |
-| `renderAnnotations` | `boolean`                   | `true`  | Whether to render annotations and form data.        |
-| `maxPixels`         | `number`                    | `-`     | Optional upper bound on width × height per rendered page; larger renders throw `INVALID_OPTIONS`. Recommended for servers that accept a DPI from clients. |
-
-#### Return Value: `Promise<ConvertedPage[]>`
+It resolves to one `ConvertedPage` per page:
 
 ```ts
 type ConvertedPage = {
   pageIndex: number;
-  data: Buffer;
+  data: Buffer; // the encoded image
   mimeType: "image/png" | "image/jpeg" | "image/webp";
   width: number;
   height: number;
@@ -89,92 +77,94 @@ type ConvertedPage = {
 };
 ```
 
-## ⚡ Performance Benchmark
+On failure it rejects with a `PdfToImagesError`. Its `code` is one of
+`INVALID_INPUT`, `INVALID_OPTIONS`, `INVALID_PAGE_INDEX`, `INVALID_CROP`,
+`PASSWORD_ERROR`, `MALFORMED_PDF`, `PDFIUM_UNAVAILABLE` or `RENDER_ERROR`. The
+[API reference](https://pdf-raster.omsimos.com/docs/api-reference) describes
+each one.
 
-Measured on an **AMD Ryzen 7 7800X3D (16 threads), Linux x64**, rendering at
-`300 DPI` (2550×3300 px per page) to **PNG**, one conversion at a time. The
-fixtures are generated by `bun run --cwd benchmark fixtures`: `text-20.pdf`
-(20 US-letter text pages) and `mixed-10.pdf` (10 letter pages alternating text
-and a 1200×900 image).
+## Performance
 
-| Library                      | text-20 ms/page | mixed-10 ms/page | Relative speed (total time) |
-| :--------------------------- | :-------------- | :--------------- | :-------------------------- |
-| **pdf-raster**               | **16.91 ms**    | **25.94 ms**     | **Baseline (fastest)**      |
-| pdfjs-dist + @napi-rs/canvas | 220.45 ms       | 276.26 ms        | 13.0x / 10.6x slower        |
-| pdfjs-dist + node-canvas     | 328.14 ms       | n/a<sup>1</sup>  | 19.4x slower (text-20)      |
+Measured on an Apple M4 (4 performance and 6 efficiency cores, 24 GB), macOS
+27, Bun 1.4.2, rendering at 300 DPI (2550 × 3300 pixels per page) to PNG, one conversion at a time.
+`bun run --cwd benchmark fixtures` generates both PDFs. `text-20.pdf` has 20
+letter pages of text, and `mixed-10.pdf` has 10 letter pages that alternate
+between text and a 1200 × 900 image.
 
-<sup>1</sup> `pdfjs-dist + node-canvas` fails on `mixed-10.pdf` (`Image or Canvas
-expected`), so it is skipped for that fixture.
+| Library                      | text-20, ms/page | mixed-10, ms/page | Total time vs pdf-raster |
+| :--------------------------- | ---------------: | ----------------: | :----------------------- |
+| pdf-raster                   | 10.06            | 17.13             |                          |
+| pdfjs-dist + @napi-rs/canvas | 174.97           | 218.16            | 17.4x / 12.7x slower     |
+| pdfjs-dist + node-canvas     | 256.90           | fails<sup>1</sup> | 25.5x slower on text-20  |
 
-> [!NOTE]
-> pdf-raster's PNG output favours speed (fast compression), so its files are
-> about 3x larger than the PNGs `pdfjs-dist` produces (59.7 MB vs 20.8 MB for
-> the 20 `text-20` pages). When size matters, WebP is still lossless and was
-> the smallest output on the text PDF (about 0.95 MB/page vs about 3.0 MB for
-> PNG and about 1.2 MB for JPEG), while JPEG was the smallest on the
-> image-heavy PDF (about 1.1 MB/page vs about 2.3 MB for WebP).
+<sup>1</sup> `pdfjs-dist + node-canvas` throws `Image or Canvas expected` on
+`mixed-10.pdf`.
 
-**pdf-raster throughput by format** (`text-20.pdf`, pages per second):
+pdf-raster throughput on `text-20.pdf`, in pages per second:
 
-| Format | 1 concurrent `convert()` | 4 concurrent `convert()` calls |
-| :----- | :----------------------- | :----------------------------- |
-| PNG    | 59.1                     | 60.8                           |
-| JPEG   | 48.4                     | 58.7                           |
-| WebP   | 53.8                     | 56.6                           |
-
-In 0.2.0, JPEG encoding is up to ~8x faster and PNG/WebP about 2x faster than
-in 0.1.x, because JPEG uses a faster encoder and pages are encoded in parallel
-outside the PDFium lock.
+| Format | 1 call at a time | 4 calls at once |
+| :----- | ---------------: | --------------: |
+| PNG    | 97.4             | 105.8           |
+| JPEG   | 59.7             | 67.4            |
+| WebP   | 96.1             | 102.3           |
 
 > [!NOTE]
-> Performance will vary with PDF complexity and hardware. Run
-> `bun run benchmark` on your own machine to compare against your environment.
+> pdf-raster compresses PNGs with a fast setting, so its PNG files are about
+> 2.5 times larger than the ones pdfjs-dist writes (58.9 MB against 23.4 MB for
+> the 20 pages of `text-20.pdf`). For smaller files, use WebP, which is also
+> lossless and encodes almost as fast. It averaged 0.94 MB per text page against
+> 2.9 MB for PNG and 1.2 MB for JPEG. On the image-heavy PDF, JPEG was the
+> smallest at 1.1 MB per page against 2.3 MB for WebP.
 
-## 🌍 Runtime & Platform Support
+Compared with the published 0.1.0 on the same machine, 0.2.0 raised
+throughput on `text-20.pdf` from 28.3 to 97.4 pages per second for PNG, 14.1
+to 59.7 for JPEG and 36.8 to 96.1 for WebP.
+JPEG moved to a faster encoder, and pages now encode in parallel outside the
+PDFium lock.
 
-This package uses native bindings and is intended for **server-side environments only**.
+Results depend on your hardware and your PDFs. Run `bun run benchmark` in this
+repository to measure your own.
 
-| Runtime           | Supported |
-| :---------------- | :-------- |
-| **Node.js**       | ✅ 24+    |
-| **Bun**           | ✅ Yes    |
-| **Browser**       | ❌ No     |
-| **Edge Runtimes** | ❌ No     |
+## Running on a server
 
-**Supported Architectures:**
+pdf-raster loads native code, so it runs only in server code. It does not work
+in browsers, React Client Components, Edge runtimes or WebAssembly.
 
-- **OS:** Linux (gnu), macOS, Windows
-- **Arch:** x64, arm64
+- Concurrent `convert()` calls are safe. PDFium is not thread-safe, so pages
+  render one at a time behind a process-wide lock. Encoding runs outside the
+  lock on up to 4 threads per call.
+- The process holds at most 8 rendered pages in memory at once, about 270 MB
+  at 300 DPI on letter paper.
+- If clients can choose the DPI, set `maxPixels` so oversized pages fail
+  before pdf-raster allocates memory for them.
+- In Next.js, add `serverExternalPackages: ["pdf-raster"]` to `next.config.*`
+  and use the Node.js runtime. See the
+  [runtime guide](https://pdf-raster.omsimos.com/docs/runtime-and-environment).
 
-> [!CAUTION]
-> Do not import this into browser bundles, React Client Components, or Vercel Edge Functions.
+## Development
 
-> [!NOTE]
-> **Next.js:** add `serverExternalPackages: ["pdf-raster"]` to `next.config.*`
-> and use Node.js (not Edge) routes. See the
-> [runtime guide](https://pdf-raster.omsimos.com/docs/runtime-and-environment).
+This repository is a Bun and Turborepo monorepo. You need Bun 1.4.2 (pinned
+in `packageManager`), stable Rust and Node.js 24 or newer.
 
-## 🛠 Local Development
+```bash
+bun install
+bun run pdfium:download   # download PDFium into the local cache
+bun run build
+bun run test
+bun run benchmark
+```
 
-This repository is a Bun + Turborepo monorepo.
+| Directory    | Contents |
+| :----------- | :------- |
+| `core/`      | The published `pdf-raster` package |
+| `docs/`      | The documentation site |
+| `benchmark/` | Comparisons against pdfjs-dist |
+| `example/`   | A demo app that uses the local workspace package |
+| `consumer/`  | A minimal Next.js app that installs pdf-raster from npm |
 
-**Prerequisites:** Bun 1.4.2 (the version pinned in `packageManager`), Rust
-(stable), and Node.js 24+.
+[Local development](https://pdf-raster.omsimos.com/docs/local-development)
+covers environment variables and the release process.
 
-1. **Setup:** `bun install`
-2. **Native Binaries:** `bun run pdfium:download`
-3. **Build:** `bun run build`
-4. **Test:** `bun run test`
-5. **Benchmark:** `bun run benchmark`
-
-### Workspace layout
-
-- `core/` - the published `pdf-raster` package
-- `example/` - the polished internal demo app using the local workspace package
-- `consumer/` - a minimal Next.js app for validating the published npm package
-- `docs/` - the hosted documentation source
-- `benchmark/` - internal performance comparisons against `pdfjs-dist`
-
-## 📄 License
+## License
 
 MIT
