@@ -59,8 +59,6 @@
   --ring: #c2410c;
 
   --pr-accent-soft: rgb(194 65 12 / 0.1);
-  --pr-grid: rgb(26 24 20 / 0.06);
-  --pr-paper: #ffffff;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -86,8 +84,6 @@
     --ring: #f97340;
 
     --pr-accent-soft: rgb(249 115 64 / 0.12);
-    --pr-grid: rgb(236 233 226 / 0.05);
-    --pr-paper: #1b1a17;
   }
 }
 
@@ -107,25 +103,5 @@
 
   ::selection {
     background: var(--pr-accent-soft);
-  }
-}
-
-@layer components {
-  .pr-eyebrow {
-    font-family: var(--font-mono);
-    font-size: 0.7rem;
-    letter-spacing: 0.08em;
-    text-transform: uppercase;
-    color: var(--color-muted-foreground);
-  }
-
-  .pr-dotgrid {
-    background-image: radial-gradient(var(--pr-grid) 1px, transparent 1px);
-    background-size: 16px 16px;
-  }
-
-  .pr-scroll {
-    scrollbar-width: thin;
-    scrollbar-color: var(--color-border) transparent;
   }
 }
