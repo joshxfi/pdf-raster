@@ -1,6 +1,6 @@
 {
   "name": "pdf-raster",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "High-performance PDF to image conversion for Node.js and Bun.",
   "type": "module",
   "license": "MIT",
