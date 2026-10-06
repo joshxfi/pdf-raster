@@ -8,7 +8,7 @@ Render PDF pages to PNG, JPEG or WebP buffers in Node.js and Bun.
 
 pdf-raster runs PDFium inside a native addon written in Rust. One function,
 `convert()`, takes a file path or PDF bytes and returns one encoded image per
-page. In the repository benchmark on an Apple M4 it is 12.7 to 17.4 times
+page. In the repository benchmark on an Apple M4 it is 12.7 to 17.6 times
 faster than pdfjs-dist with `@napi-rs/canvas` on 300 DPI letter pages.
 
 [Documentation](https://pdf-raster.omsimos.com) ·
@@ -67,9 +67,9 @@ conversion at a time:
 
 | Library                      | Text PDF, ms/page | PDF with images, ms/page |
 | :--------------------------- | ----------------: | -----------------------: |
-| pdf-raster                   | 10.06             | 17.13                    |
-| pdfjs-dist + @napi-rs/canvas | 174.97            | 218.16                   |
-| pdfjs-dist + node-canvas     | 256.90            | fails                    |
+| pdf-raster                   | 10.08             | 17.13                    |
+| pdfjs-dist + @napi-rs/canvas | 176.93            | 218.30                   |
+| pdfjs-dist + node-canvas     | 256.88            | 299.05                   |
 
 PNG output uses fast compression and is about 2.5 times larger than
 pdfjs-dist's PNGs. WebP is also lossless, encodes almost as fast, and is about
