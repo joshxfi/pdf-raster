@@ -1,20 +1,18 @@
 ---
 title: Installation
-description: Install the package and understand what gets pulled in at runtime.
+description: Install pdf-raster and check that it runs on your platform.
 ---
 
-## Install the package
-
-<CodeBlockTabs defaultValue="bun">
+<CodeBlockTabs defaultValue="npm">
   <CodeBlockTabsList>
-    <CodeBlockTabsTrigger value="bun">bun</CodeBlockTabsTrigger>
-    <CodeBlockTabsTrigger value="pnpm">pnpm</CodeBlockTabsTrigger>
     <CodeBlockTabsTrigger value="npm">npm</CodeBlockTabsTrigger>
+    <CodeBlockTabsTrigger value="pnpm">pnpm</CodeBlockTabsTrigger>
+    <CodeBlockTabsTrigger value="bun">bun</CodeBlockTabsTrigger>
   </CodeBlockTabsList>
-  <CodeBlockTab value="bun">
+  <CodeBlockTab value="npm">
 
 ```bash
-bun add pdf-raster
+npm install pdf-raster
 ```
 
   </CodeBlockTab>
@@ -25,48 +23,65 @@ pnpm add pdf-raster
 ```
 
   </CodeBlockTab>
-  <CodeBlockTab value="npm">
+  <CodeBlockTab value="bun">
 
 ```bash
-npm install pdf-raster
+bun add pdf-raster
 ```
 
   </CodeBlockTab>
 </CodeBlockTabs>
 
-## Runtime model
+## Requirements
 
-<Callout type="warning" title="Server-side only">
-  This package is meant for Node.js and Bun. Do not import it into browser
-  bundles.
+- Node.js 24 or newer, or Bun
+- macOS, Linux with glibc, or Windows, on x64 or arm64
+
+There is no prebuilt package for Alpine Linux or other musl-based
+distributions.
+
+## What gets installed
+
+`pdf-raster` lists one optional dependency per platform, such as
+`pdf-raster-darwin-arm64` or `pdf-raster-linux-x64-gnu`. Your package manager
+installs only the one that matches your machine. That package holds the
+compiled addon and the PDFium shared library it loads, so you do not install
+PDFium yourself.
+
+<Callout type="warning" title="Server code only">
+  The package loads native code. Do not import it from browser bundles, React
+  Client Components or Edge functions.
 </Callout>
 
-The library is native and server-side:
+## Next.js
 
-- supported runtimes: Node.js 24 or newer, and Bun
-- rendering backend: PDFium
-- primary output: image `Buffer`s for each page
+Add the package to `serverExternalPackages` so Next.js loads it from
+`node_modules` at runtime instead of bundling it:
 
-Use it in:
+```ts title="next.config.ts"
+import type { NextConfig } from "next";
 
-- backend jobs
-- API routes and route handlers
-- worker processes
-- document-processing services
+const nextConfig: NextConfig = {
+  serverExternalPackages: ["pdf-raster"],
+};
 
-## What the package contains
+export default nextConfig;
+```
 
-Installing `pdf-raster` gives you:
+Call it only from Node.js route handlers, Server Actions or other server code.
+[Runtime and environment](/docs/runtime-and-environment) explains why.
 
-- the JavaScript API
-- a native `.node` binding for the current platform
-- the matching PDFium shared library used for rendering
+## Check the install
 
-The goal is still a thin JavaScript surface with native rendering under the
-hood.
+Render the first page of any PDF:
 
-## Read next
+```ts
+import { convert } from "pdf-raster";
 
-- [Quickstart](/docs/quickstart)
-- [Runtime and environment](/docs/runtime-and-environment)
-- [Local development](/docs/local-development)
+const [page] = await convert("./any.pdf", { pages: [0] });
+console.log(page.mimeType, page.width, page.height);
+// image/png 2550 3300 (a US letter page at the default 300 DPI)
+```
+
+If the call throws `PDFIUM_UNAVAILABLE`, the platform package is missing or
+could not load. See [Errors and troubleshooting](/docs/errors-and-troubleshooting).

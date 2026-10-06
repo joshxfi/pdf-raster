@@ -1,111 +1,91 @@
 ---
-title: Next.js route handler example
-description: The smallest correct Next.js server-side pattern for converting PDFs inside App Router.
+title: Next.js route handler
+description: Accept a PDF upload in an App Router route handler and return page images.
 ---
 
-<Callout type="warning" title="Node runtime only">
-  Keep this package in a Node.js route handler or other server-only code. Do
-  not import it into the client or Edge runtime.
+<Callout type="info" title="Config first">
+  Add `serverExternalPackages: ["pdf-raster"]` to `next.config.ts`. See
+  [Installation](/docs/installation#nextjs).
 </Callout>
 
-<Callout type="info" title="Next.js config">
-  Add `serverExternalPackages: ["pdf-raster"]` to your `next.config.ts` so the
-  native binding is not bundled. See
-  [Runtime and environment](/docs/runtime-and-environment).
-</Callout>
+This route takes a PDF from a form upload, renders the first page as WebP and
+returns it as a data URL. For a client page that uploads files and shows every
+page, see [Upload and preview](/docs/examples-nextjs-full-flow).
 
-This page shows only the server route. If you also want a client upload form
-and a preview grid that renders every returned page image, use the
-[full Next.js upload and preview example](/docs/examples-nextjs-full-flow).
-
-## Example route handler
-
-<Files>
-  <Folder name="app" defaultOpen>
-    <Folder name="api" defaultOpen>
-      <Folder name="convert" defaultOpen>
-        <File name="route.ts" />
-      </Folder>
-    </Folder>
-  </Folder>
-</Files>
-
-```ts
-import { NextResponse } from "next/server";
+```ts title="app/api/convert/route.ts"
 import { convert, PdfToImagesError } from "pdf-raster";
 
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
+  const formData = await request.formData();
+  const upload = formData.get("file");
+
+  if (!(upload instanceof File) || !upload.name.toLowerCase().endsWith(".pdf")) {
+    return Response.json(
+      { code: "INVALID_INPUT", message: "Upload a PDF file." },
+      { status: 400 },
+    );
+  }
+
   try {
-    const formData = await request.formData();
-    const upload = formData.get("file");
-    const isPdf =
-      upload instanceof File &&
-      (upload.type === "application/pdf" ||
-        upload.name.toLowerCase().endsWith(".pdf"));
-
-    if (!isPdf || !(upload instanceof File)) {
-      return NextResponse.json(
-        { code: "INVALID_INPUT", message: "Missing PDF upload." },
-        { status: 400 },
-      );
-    }
-
-    const bytes = Buffer.from(await upload.arrayBuffer());
-    const pages = await convert(bytes, {
+    const pages = await convert(await upload.arrayBuffer(), {
       pages: [0],
+      dpi: 150,
       outputFormat: "webp",
-      dpi: 300,
+      maxPixels: 50_000_000,
     });
 
-    return NextResponse.json({
+    return Response.json({
       pages: pages.map((page) => ({
         pageIndex: page.pageIndex,
         width: page.width,
         height: page.height,
-        dpi: page.dpi,
-        mimeType: page.mimeType,
         src: `data:${page.mimeType};base64,${page.data.toString("base64")}`,
       })),
     });
   } catch (error) {
     if (error instanceof PdfToImagesError) {
-      return NextResponse.json(
+      const status = error.code === "PDFIUM_UNAVAILABLE" ? 500 : 400;
+      return Response.json(
         { code: error.code, message: error.message },
-        { status: 400 },
+        { status },
       );
     }
 
-    return NextResponse.json(
-      { code: "RENDER_ERROR", message: "Unexpected conversion failure." },
+    console.error(error);
+    return Response.json(
+      { code: "RENDER_ERROR", message: "Conversion failed." },
       { status: 500 },
     );
   }
 }
 ```
 
-This route shape is useful when:
+## Notes
 
-- your frontend is already built and only needs an API endpoint
-- you want to keep the native package isolated to one server route
-- you plan to return small preview payloads, object-storage URLs, or other
-  app-specific response shapes
+- `runtime = "nodejs"` keeps the route off the Edge runtime, which cannot load
+  native code.
+- `maxPixels` caps the memory one request can claim if a client uploads a PDF
+  with huge pages.
+- The handler only imports pdf-raster on the server. The browser receives
+  image data and never loads the package.
 
-## Why a route handler works well
+## Return images, not JSON
 
-- keeps the native binding on the server
-- accepts uploads directly
-- can normalize errors into stable API responses
-- lets the client render previews without touching PDFium directly
+To serve a single page as an image, for example from `<img src="/api/cover">`,
+return the buffer directly:
 
-<Callout type="info" title="Use data URLs for small previews">
-  Returning `data:` URLs is convenient for demos and document previews. For
-  larger jobs, it is usually better to return file handles, object-storage URLs,
-  or another server-side reference instead of base64-encoding every page into
-  JSON.
+```ts
+const [page] = await convert(bytes, { pages: [0], outputFormat: "webp" });
+
+return new Response(new Uint8Array(page.data), {
+  headers: { "Content-Type": page.mimeType },
+});
+```
+
+<Callout type="info" title="Data URLs grow fast">
+  Base64 makes each image about a third larger, and a 300 DPI page is often
+  1 MB or more. For more than a few pages, upload the images to storage and
+  return their URLs.
 </Callout>
-
-If you want to see the matching client page that uploads a PDF and renders the
-returned images, continue to the
-[full Next.js upload and preview example](/docs/examples-nextjs-full-flow).

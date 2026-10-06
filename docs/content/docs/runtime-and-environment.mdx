@@ -1,39 +1,34 @@
 ---
 title: Runtime and environment
-description: Understand supported runtimes and the native PDFium dependency model.
+description: Where pdf-raster runs, how it behaves under concurrent load and how much memory it needs.
 ---
 
 ## Supported runtimes
 
-`pdf-raster` is designed for:
+| Runtime | Supported |
+| :------ | :-------- |
+| Node.js 24 or newer | Yes |
+| Bun | Yes |
+| Browsers and React Client Components | No |
+| Edge runtimes, such as Vercel Edge Functions | No |
+| WebAssembly | No |
 
-- Node.js 24 or newer
-- Bun
+Prebuilt packages cover macOS, Linux with glibc and Windows, each on x64 and
+arm64.
 
-It is not designed for:
+## Why it only runs on the server
 
-- browsers
-- React client components
-- Edge runtime
-- WebAssembly
-
-## Why server-side only
-
-The package loads a native binding and a platform-specific PDFium library. That
-is the right tradeoff for throughput and installation simplicity on the server,
-but it means the package should stay on the backend side of your app.
-
-<Callout type="warning" title="Next.js runtime choice">
-  In Next.js, keep `pdf-raster` inside Node.js route handlers or
-  other server-only code. Do not run it in Edge routes.
-</Callout>
+pdf-raster loads a compiled `.node` addon and a PDFium shared library from
+disk. Browsers and Edge runtimes cannot load native code, so the package must
+stay in server code.
 
 ### Next.js
 
-Tell Next.js not to bundle the package, because the native binding and the
-PDFium library are loaded at runtime and must stay as real files on disk:
+Next.js bundles server code by default, and bundling breaks the paths to the
+addon and to PDFium. List the package in `serverExternalPackages` so Next.js
+loads it from `node_modules` instead:
 
-```ts
+```ts title="next.config.ts"
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
@@ -43,41 +38,50 @@ const nextConfig: NextConfig = {
 export default nextConfig;
 ```
 
+<Callout type="warning" title="Use the Node.js runtime">
+  Route handlers that import pdf-raster must run on the Node.js runtime. Add
+  `export const runtime = "nodejs"` if your app defaults to Edge.
+</Callout>
+
 ## Concurrency and memory
 
-PDFium is not thread-safe, so `pdf-raster` serializes document loading and page
-rendering behind one process-wide lock. Concurrent `convert()` calls are safe;
-they take turns rendering.
+PDFium is not thread-safe. pdf-raster loads documents and renders pages behind
+one lock shared by the whole process. Concurrent `convert()` calls are safe,
+and they take turns rendering.
 
-Encoding does not need that lock. Each call encodes its pages on up to 4 worker
-threads, and the lock is released as soon as the call's last page is rendered,
-so other calls can start rendering while earlier pages are still being encoded.
+Encoding does not need the lock. Each call encodes its pages on up to 4 worker
+threads. A call releases the lock as soon as its last page is rendered, so the
+next call can start rendering while the earlier pages are still encoding.
 
-To keep memory bounded, at most 8 rendered pages (RGBA frames) exist at once
-across the whole process, no matter how many calls are running. Estimate the
-peak with:
+<Pipeline />
+
+To bound memory, the process holds at most 8 rendered pages (raw RGBA frames)
+at once, however many calls are running. Estimate the peak with:
 
 ```text
 8 × width × height × 4 bytes
 ```
 
-At 300 DPI on a US letter page (2550×3300 px) that is about 270 MB. The figure
-scales with page area and with the square of the DPI.
+A US letter page at 300 DPI is 2550 × 3300 pixels, so the peak is about
+270 MB. The figure grows with page area and with the square of the DPI.
 
-If the DPI or page size can come from untrusted input, set `maxPixels` so
-oversized renders are rejected with `INVALID_OPTIONS` before any bitmap is
-allocated.
+### Untrusted input
 
-## Native dependency model
+If a client can choose the DPI, or can upload PDFs with very large pages, set
+`maxPixels`. pdf-raster then rejects any page whose width times height exceeds
+the limit with `INVALID_OPTIONS`, before it allocates the bitmap.
 
-At runtime, the package needs:
+```ts
+await convert(upload, {
+  dpi: requestedDpi,
+  maxPixels: 100_000_000,
+});
+```
 
-- the `napi-rs` native binding
-- a matching PDFium library for the current platform
+pdf-raster also rejects pages that would render wider or taller than 65,535
+pixels, with or without `maxPixels`.
 
-In this monorepo, PDFium is cached locally and bundled during package builds.
+## If the library fails to load
 
-## If the library fails to initialize
-
-See [Errors and troubleshooting](/docs/errors-and-troubleshooting). If you are
-working on the package locally, also see [Local development](/docs/local-development).
+A `PDFIUM_UNAVAILABLE` error means the addon or the PDFium library could not
+load. See [Errors and troubleshooting](/docs/errors-and-troubleshooting).

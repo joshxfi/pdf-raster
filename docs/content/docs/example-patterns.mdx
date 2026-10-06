@@ -1,49 +1,46 @@
 ---
-title: Examples and patterns
-description: Choose the right integration pattern for Node.js, Next.js, and downstream image workflows.
+title: Examples
+description: Pick an example by where your PDF comes from and where the images go next.
 ---
 
-Use this page as an index to the most common ways teams integrate the library.
-
 <Cards>
-  <Card title="Node.js recipes" href="/docs/examples-node">
-    File-path conversion, in-memory buffers, and selected-page usage.
+  <Card title="Node.js and Bun" href="/docs/examples-node">
+    Convert files from disk or bytes from memory in a script or worker.
   </Card>
-  <Card title="Next.js route handlers" href="/docs/examples-nextjs">
-    The smallest correct server-side pattern for App Router APIs.
+  <Card title="Next.js route handler" href="/docs/examples-nextjs">
+    Accept an upload and return page images from an App Router route.
   </Card>
-  <Card title="Next.js upload + preview" href="/docs/examples-nextjs-full-flow">
-    Add a client upload form, call a route handler, and render every page image.
+  <Card title="Next.js upload and preview" href="/docs/examples-nextjs-full-flow">
+    The route above plus a client page that shows every rendered page.
   </Card>
-  <Card title="Downstream integrations" href="/docs/examples-ocr-vlm">
-    Pass rendered page images into OCR, AI SDK image prompts, or other consumers.
+  <Card title="OCR and vision models" href="/docs/examples-ocr-vlm">
+    Pass pages to Tesseract.js or to a multimodal model with the AI SDK.
   </Card>
 </Cards>
 
-## Which pattern should you choose?
+## Which one to start with
 
 <Accordions type="single">
-  <Accordion title="I already have a PDF on disk">
-    Start with the Node.js file-path example. It is the simplest call shape and
-    works well for backend jobs or batch pipelines.
+  <Accordion title="The PDF is a file on disk">
+    Pass the path to `convert()`. See [Node.js and Bun](/docs/examples-node).
   </Accordion>
-  <Accordion title="My PDF arrives over HTTP or from object storage">
-    Use the in-memory buffer pattern so you can keep everything off disk.
+  <Accordion title="The PDF arrives over HTTP or from object storage">
+    Pass the bytes as a `Buffer` or `ArrayBuffer`. pdf-raster never writes a
+    temporary file. See [Node.js and Bun](/docs/examples-node#convert-bytes-from-memory).
   </Accordion>
-  <Accordion title="I need to expose this behind a web UI">
-    Start with the route-handler example if you only need the server API. Use
-    the full Next.js upload-and-preview example if you also need a client page
-    that renders every returned image.
+  <Accordion title="Users upload PDFs in a web app">
+    Start with the [route handler](/docs/examples-nextjs). Add the
+    [upload and preview page](/docs/examples-nextjs-full-flow) if you also need
+    the client side.
   </Accordion>
-  <Accordion title="I need smaller preview payloads">
-    Keep PNG as the default when quality matters most. WebP is lossless and
-    smaller than PNG, but slower to encode on large pages. JPEG is lossy and the
-    smallest, so use it when you want to shrink response sizes for previews or
-    downstream transport.
+  <Accordion title="The response is too large">
+    Lower the DPI, request fewer pages, or switch formats. WebP is lossless and
+    about a third the size of PNG on text pages. JPEG is lossy and the smallest
+    on pages with photos. For more than a few pages, store the images and
+    return URLs instead of embedding base64 in JSON.
   </Accordion>
-  <Accordion title="I want to send pages into another system">
-    Convert first, then pass the rendered page images into whatever comes next,
-    whether that is OCR, an image API, a multimodal model, or your own
-    processing pipeline.
+  <Accordion title="The images go to OCR or a model">
+    Render at 300 DPI and pass `page.data` with `page.mimeType`. See
+    [OCR and vision models](/docs/examples-ocr-vlm).
   </Accordion>
 </Accordions>

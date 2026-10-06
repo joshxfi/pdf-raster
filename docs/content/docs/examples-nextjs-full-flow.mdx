@@ -1,35 +1,20 @@
 ---
-title: Next.js upload and preview example
-description: Build a simple App Router flow with a client upload form, a Node.js route handler, and image previews for every returned page.
+title: Next.js upload and preview
+description: A client page that uploads a PDF, a route handler that converts it, and a grid that shows every page.
 ---
 
-<Callout type="warning" title="Keep the native package on the server">
-  Import `pdf-raster` only inside the route handler. The client page
-  should only send `FormData` and render the returned image payloads.
+<Callout type="info" title="Config first">
+  Add `serverExternalPackages: ["pdf-raster"]` to `next.config.ts`. See
+  [Installation](/docs/installation#nextjs).
 </Callout>
 
-<Callout type="info" title="Next.js config">
-  Add `serverExternalPackages: ["pdf-raster"]` to your `next.config.ts` so the
-  native binding is not bundled. See
-  [Runtime and environment](/docs/runtime-and-environment).
-</Callout>
-
-This example shows a complete App Router flow:
+The flow has three steps:
 
 <Steps>
-  <Step>
-    The client page uploads a PDF with `FormData`.
-  </Step>
-  <Step>
-    The route handler validates the upload, converts the PDF, and returns one
-    response object per page.
-  </Step>
-  <Step>
-    The client renders every returned image with `next/image`.
-  </Step>
+  <Step>The client page posts the PDF as `FormData`.</Step>
+  <Step>The route handler converts every page and returns them as data URLs.</Step>
+  <Step>The client renders each page with `next/image`.</Step>
 </Steps>
-
-## File structure
 
 <Files>
   <Folder name="app" defaultOpen>
@@ -44,46 +29,44 @@ This example shows a complete App Router flow:
 
 ## Route handler
 
-```ts
-import { NextResponse } from "next/server";
+```ts title="app/api/convert/route.ts"
 import { convert, PdfToImagesError } from "pdf-raster";
 
 export const runtime = "nodejs";
 
 function errorResponse(code: string, message: string, status: number) {
-  return NextResponse.json({ code, message }, { status });
+  return Response.json({ code, message }, { status });
 }
 
 export async function POST(request: Request) {
+  const formData = await request.formData();
+  const upload = formData.get("file");
+
+  if (!(upload instanceof File)) {
+    return errorResponse("INVALID_INPUT", "Missing PDF upload.", 400);
+  }
+
+  const isPdf =
+    upload.type === "application/pdf" ||
+    upload.name.toLowerCase().endsWith(".pdf");
+
+  if (!isPdf) {
+    return errorResponse("INVALID_INPUT", "Only PDF uploads are supported.", 400);
+  }
+
   try {
-    const formData = await request.formData();
-    const upload = formData.get("file");
-
-    if (!(upload instanceof File)) {
-      return errorResponse("INVALID_INPUT", "Missing PDF upload.", 400);
-    }
-
-    const lowerName = upload.name.toLowerCase();
-    const isPdf =
-      upload.type === "application/pdf" || lowerName.endsWith(".pdf");
-
-    if (!isPdf) {
-      return errorResponse("INVALID_INPUT", "Only PDF uploads are supported.", 400);
-    }
-
-    const buffer = Buffer.from(await upload.arrayBuffer());
-    const pages = await convert(buffer, {
-      dpi: 300,
-      outputFormat: "png",
+    const pages = await convert(await upload.arrayBuffer(), {
+      dpi: 150,
+      outputFormat: "webp",
+      maxPixels: 50_000_000,
     });
 
-    return NextResponse.json({
+    return Response.json({
       pages: pages.map((page) => ({
         pageIndex: page.pageIndex,
         width: page.width,
         height: page.height,
         dpi: page.dpi,
-        mimeType: page.mimeType,
         src: `data:${page.mimeType};base64,${page.data.toString("base64")}`,
       })),
     });
@@ -92,100 +75,85 @@ export async function POST(request: Request) {
       return errorResponse(error.code, error.message, 400);
     }
 
-    return errorResponse(
-      "RENDER_ERROR",
-      "Unexpected conversion failure.",
-      500,
-    );
+    console.error(error);
+    return errorResponse("RENDER_ERROR", "Conversion failed.", 500);
   }
 }
 ```
 
 ## Client page
 
-```tsx
+```tsx title="app/page.tsx"
 "use client";
 
 import Image from "next/image";
 import { useState } from "react";
 
-type ConvertedPage = {
+type RenderedPage = {
   pageIndex: number;
   width: number;
   height: number;
   dpi: number;
-  mimeType: string;
   src: string;
 };
 
 export default function Page() {
-  const [file, setFile] = useState<File | null>(null);
-  const [pages, setPages] = useState<ConvertedPage[]>([]);
+  const [pages, setPages] = useState<RenderedPage[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
-
-    if (!file) {
-      setError("Choose a PDF before converting.");
-      return;
-    }
-
     setError(null);
-    setIsLoading(true);
     setPages([]);
+    setIsLoading(true);
 
-    const formData = new FormData();
-    formData.set("file", file);
+    try {
+      const response = await fetch("/api/convert", {
+        method: "POST",
+        body: new FormData(event.currentTarget),
+      });
+      const payload = await response.json();
 
-    const response = await fetch("/api/convert", {
-      method: "POST",
-      body: formData,
-    });
+      if (!response.ok) {
+        setError(payload.message ?? "Conversion failed.");
+        return;
+      }
 
-    const payload = await response.json();
-
-    if (!response.ok) {
-      setError(payload.message ?? "Conversion failed.");
+      setPages(payload.pages);
+    } catch {
+      setError("Could not reach the server.");
+    } finally {
       setIsLoading(false);
-      return;
     }
-
-    setPages(payload.pages ?? []);
-    setIsLoading(false);
   }
 
   return (
     <main>
       <form onSubmit={handleSubmit}>
-        <input
-          type="file"
-          accept="application/pdf,.pdf"
-          onChange={(event) => setFile(event.currentTarget.files?.[0] ?? null)}
-        />
+        <input type="file" name="file" accept="application/pdf,.pdf" required />
         <button type="submit" disabled={isLoading}>
-          {isLoading ? "Converting..." : "Convert PDF"}
+          {isLoading ? "Converting…" : "Convert PDF"}
         </button>
       </form>
 
-      {error ? <p>{error}</p> : null}
+      {error ? <p role="alert">{error}</p> : null}
 
       <section>
         {pages.map((page) => (
-          <article key={page.pageIndex}>
-            <h2>Page {page.pageIndex + 1}</h2>
-            <p>
-              {page.width} × {page.height} at {page.dpi} DPI
-            </p>
+          <figure key={page.pageIndex}>
             <Image
               src={page.src}
-              alt={`Rendered PDF page ${page.pageIndex + 1}`}
+              alt={`Page ${page.pageIndex + 1}`}
               width={page.width}
               height={page.height}
               unoptimized
             />
-          </article>
+            <figcaption>
+              Page {page.pageIndex + 1}, {page.width} × {page.height} px at{" "}
+              {page.dpi} DPI
+            </figcaption>
+          </figure>
         ))}
       </section>
     </main>
@@ -193,17 +161,15 @@ export default function Page() {
 }
 ```
 
-## Why this pattern works
+## Why it is split this way
 
-- the browser never imports the native package
-- the route stays small and can normalize errors for the UI
-- the client gets everything it needs to render all page previews immediately
+Only the route handler imports pdf-raster, so the native code stays on the
+server. The client page sends a form and renders the images it gets back.
 
-<Callout type="info" title="Good for docs, demos, and small previews">
-  Returning `data:` URLs keeps the example easy to understand. For larger jobs,
-  prefer storing the rendered images server-side and returning references
-  instead of base64-encoding every page into JSON.
+<Callout type="info" title="For larger documents">
+  Data URLs keep this example short. For PDFs with more than a few pages, store
+  the rendered images and return their URLs, or stream pages one request at a
+  time with the `pages` option.
 </Callout>
 
-If you only need the API endpoint and not the upload UI, use the
-[smaller route-handler example](/docs/examples-nextjs) instead.
+For the route on its own, see [Next.js route handler](/docs/examples-nextjs).

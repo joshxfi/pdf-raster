@@ -1,56 +1,86 @@
 ---
 title: Errors and troubleshooting
-description: Understand stable error codes and the most common failure scenarios.
+description: Handle PdfToImagesError codes and fix the most common failures.
 ---
 
-## Stable error model
+`convert()` rejects with a `PdfToImagesError`. Its `code` property is one of
+eight fixed strings, so you can branch on it instead of parsing messages.
 
-The package throws `PdfToImagesError` with a stable `code`.
+## Handle errors
 
-That lets you distinguish:
+```ts
+import { convert, PdfToImagesError } from "pdf-raster";
 
-- bad caller input
-- malformed or encrypted documents
-- native runtime setup failures
-- rendering failures
+try {
+  const pages = await convert(bytes, { dpi: 300 });
+} catch (error) {
+  if (error instanceof PdfToImagesError) {
+    console.error(error.code, error.message);
+  }
+  throw error;
+}
+```
+
+## Map codes to HTTP status
+
+If you expose conversion through an API, the code tells you whose fault the
+failure is.
+
+| Code | Cause | Status |
+| :--- | :---- | :----- |
+| `INVALID_INPUT` | The caller sent no PDF or the wrong type. | 400 |
+| `INVALID_OPTIONS` | A bad option, or a page over `maxPixels`. | 400 |
+| `INVALID_PAGE_INDEX` | A page that does not exist. | 400 |
+| `INVALID_CROP` | A crop outside the page. | 400 |
+| `PASSWORD_ERROR` | Missing or wrong password. | 400 or 401 |
+| `MALFORMED_PDF` | The upload is not a readable PDF. | 422 |
+| `PDFIUM_UNAVAILABLE` | Your server cannot load the native library. | 500 |
+| `RENDER_ERROR` | PDFium or the encoder failed. | 500 |
+
+Log the full message on the server, and return only the code and a short
+message to untrusted clients.
 
 ## Common problems
 
 <Accordions type="single">
-  <Accordion title="I got INVALID_PAGE_INDEX">
-    A requested page index does not exist in the document, or the value was not
-    a non-negative integer. Remember that page indices are zero-based.
+  <Accordion title="INVALID_PAGE_INDEX">
+    A requested index is negative, not an integer, or past the last page.
+    Indices start at 0, so a 10-page PDF accepts 0 through 9.
   </Accordion>
-  <Accordion title="I got INVALID_OPTIONS">
-    Check `dpi`, `pages`, `maxPixels`, and `outputFormat`. Supported output
-    formats are `png`, `jpeg`, and `webp`. A page that would exceed `maxPixels`,
-    or render wider or taller than 65535 px, also triggers this code. Lower the
-    `dpi` or raise `maxPixels`.
+  <Accordion title="INVALID_OPTIONS">
+    Check `dpi`, `pages`, `maxPixels` and `outputFormat`. The supported formats
+    are `png`, `jpeg` and `webp`. The same code appears when a page would exceed
+    `maxPixels` or render wider or taller than 65,535 pixels. Lower `dpi` or
+    raise `maxPixels`.
   </Accordion>
-  <Accordion title="I got MALFORMED_PDF">
-    PDFium could not parse the file. This usually means the uploaded bytes are
-    not a valid PDF or the file is structurally corrupted.
+  <Accordion title="MALFORMED_PDF">
+    PDFium could not parse the bytes. The file is usually not a PDF at all,
+    such as an HTML error page saved with a `.pdf` name, or it is truncated.
+    Check the first bytes of the file. A PDF starts with `%PDF-`.
   </Accordion>
-  <Accordion title="I got PASSWORD_ERROR">
-    The document is encrypted and the password was missing or incorrect.
+  <Accordion title="PASSWORD_ERROR">
+    The PDF is encrypted. Pass the password in the `password` option.
   </Accordion>
-  <Accordion title="I got PDFIUM_UNAVAILABLE">
-    The native PDFium library could not be loaded. In this monorepo, run
-    `bun run pdfium:download` and rebuild the package.
+  <Accordion title="PDFIUM_UNAVAILABLE">
+    The platform package did not install or could not load. Check that you
+    run Node.js 24 or newer, or Bun, on a supported platform, and that your
+    install did not skip optional dependencies (for example
+    `npm install --omit=optional`). In Next.js, add `pdf-raster` to
+    `serverExternalPackages`. When working in this repository, run
+    `bun run pdfium:download` and rebuild.
   </Accordion>
-  <Accordion title="I got RENDER_ERROR">
-    Input validation succeeded, but the native render failed. Start by testing
-    the same document with the package test flow and checking the local PDFium
-    setup.
+  <Accordion title="RENDER_ERROR">
+    The input passed validation, but rendering or encoding failed. Try the
+    same PDF at a lower DPI or in another format. If it still fails, open an
+    issue with the file if you can share it.
   </Accordion>
 </Accordions>
 
-## Production guidance
+## Running out of memory
 
-If you expose conversion through an API:
-
-- map stable error codes into HTTP status codes
-- log the native failure message on the server
-- avoid returning full native diagnostics to untrusted clients
-- set `maxPixels` (for example `100_000_000`) when the DPI comes from untrusted clients
-- size memory for concurrent conversions; see [Concurrency and memory](/docs/runtime-and-environment#concurrency-and-memory)
+pdf-raster holds at most 8 rendered pages in memory at once, about 270 MB at
+300 DPI on letter paper. Encoded output adds to that, and it stays in memory
+until you release the returned buffers. When you convert long documents, ask
+for pages in batches with `pages` and write or upload each batch before
+requesting the next. See
+[Concurrency and memory](/docs/runtime-and-environment#concurrency-and-memory).

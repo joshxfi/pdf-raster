@@ -2,20 +2,21 @@
   "title": "Documentation",
   "pages": [
     "index",
-    "---Getting Started---",
+    "---Get started---",
     "installation",
     "quickstart",
     "runtime-and-environment",
-    "local-development",
-    "---Reference---",
-    "api-reference",
-    "benchmark",
-    "errors-and-troubleshooting",
     "---Examples---",
     "example-patterns",
     "examples-node",
     "examples-nextjs",
     "examples-nextjs-full-flow",
-    "examples-ocr-vlm"
+    "examples-ocr-vlm",
+    "---Reference---",
+    "api-reference",
+    "errors-and-troubleshooting",
+    "benchmark",
+    "---Contributing---",
+    "local-development"
   ]
 }

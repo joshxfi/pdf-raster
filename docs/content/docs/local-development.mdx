@@ -1,23 +1,30 @@
 ---
 title: Local development
-description: Prepare PDFium, build the native package, and validate the local development setup in this monorepo.
+description: Build pdf-raster from source, run its tests and release a new version.
 ---
 
-Use this page if you are working on `pdf-raster` itself inside the
-monorepo. If you only want to install and use the package, start with
+This page is for working on pdf-raster itself. To use the package, start with
 [Installation](/docs/installation).
 
 ## Prerequisites
 
-- Bun 1.4.2 (the version pinned in `packageManager`)
-- Rust (stable)
+- Bun 1.4.2, the version pinned in `packageManager`
+- Rust, stable toolchain
 - Node.js 24 or newer
 
-## Local development flow
+## Build and test
 
 <Steps>
   <Step>
-    Download or refresh the local PDFium cache:
+    Install dependencies:
+
+```bash
+bun install
+```
+
+  </Step>
+  <Step>
+    Download PDFium into the local cache:
 
 ```bash
 bun run pdfium:download
@@ -33,7 +40,8 @@ bun run --filter pdf-raster build
 
   </Step>
   <Step>
-    Run the package tests to validate the local native path:
+    Run the tests. They rebuild the package, then run under Bun and Node.js and
+    check concurrent initialization:
 
 ```bash
 bun run --filter pdf-raster test
@@ -42,80 +50,65 @@ bun run --filter pdf-raster test
   </Step>
 </Steps>
 
-## Environment notes
+## Repository layout
+
+| Directory | Contents |
+| :-------- | :------- |
+| `core/` | The published `pdf-raster` package, in Rust and TypeScript |
+| `docs/` | This site, built with Next.js and Fumadocs |
+| `benchmark/` | Comparisons against pdfjs-dist |
+| `example/` | A demo app that uses the local workspace package |
+| `consumer/` | A minimal Next.js app that installs pdf-raster from npm |
+
+## Environment variables
 
 <TypeTable
   type={{
     PDFIUM_LIB_PATH: {
       type: "string",
-      description:
-        "Optional explicit path to a local PDFium shared library.",
+      description: "Path to a PDFium shared library to use instead of the cached one.",
       required: false,
     },
     PDFIUM_CACHE_DIR: {
       type: "string",
-      description:
-        "Optional override for the repo-local PDFium cache directory.",
+      description: "Directory for the PDFium cache, instead of the one in the repository.",
       required: false,
     },
     PDFIUM_RELEASE: {
       type: "string",
-      description:
-        "Optional release selector for the cached or downloaded PDFium binary. Defaults to the pinned release; overriding it (or PDFIUM_DOWNLOAD_URL) requires PDFIUM_SHA256.",
+      description: "PDFium release to download. Overriding it requires PDFIUM_SHA256.",
       required: false,
       default: '"chromium/8076"',
     },
     PDFIUM_SHA256: {
       type: "string",
-      description:
-        "SHA-256 of the PDFium archive. Required when PDFIUM_RELEASE or PDFIUM_DOWNLOAD_URL overrides the pinned release.",
+      description: "SHA-256 of the PDFium archive. Required when PDFIUM_RELEASE or PDFIUM_DOWNLOAD_URL changes the pinned release.",
       required: false,
     },
   }}
 />
 
-## Typical commands
+## When the native build breaks
 
-<Files>
-  <File name="bun run pdfium:download" />
-  <File name="bun run --filter pdf-raster build" />
-  <File name="bun run --filter pdf-raster test" />
-</Files>
+1. Run `bun run pdfium:download` to refresh the PDFium cache.
+2. Rebuild with `bun run --filter pdf-raster build`.
+3. Run `bun run --filter pdf-raster test`.
 
-## If the native setup breaks
-
-<Steps>
-  <Step>
-    Make sure the package is built for the current platform.
-  </Step>
-  <Step>
-    Refresh the local PDFium cache with `bun run pdfium:download`.
-  </Step>
-  <Step>
-    Rebuild the package with `bun run --filter pdf-raster build`.
-  </Step>
-  <Step>
-    Run `bun run --filter pdf-raster test` to validate the native
-    path.
-  </Step>
-</Steps>
+If `convert()` still throws `PDFIUM_UNAVAILABLE`, check that `PDFIUM_LIB_PATH`
+is unset or points to a library built for your platform.
 
 ## Releasing
 
-- Add a changeset with `bun run changeset` for every package-affecting change.
-  CI enforces this.
-- Merging to `main` makes the Release workflow open or update a "Version
-  Packages" pull request.
-- Merging that pull request publishes all 7 packages from `main` with
-  provenance.
-- Running the Release workflow with `workflow_dispatch` on any other branch
-  builds and smoke-tests all 6 targets but never publishes.
-- `bun run release:publish -- --dry-run` (or
-  `bun scripts/publish-packages.ts --dry-run`) checks packaging without
-  publishing (it requires all six native artifacts in `core/artifacts/`, for
-  example downloaded from a Release workflow run). A bare `npm publish` in `core/` is intentionally refused.
+- Every change that affects the package needs a changeset. Create one with
+  `bun run changeset`. CI fails without it.
+- Merging to `main` opens or updates a "Version Packages" pull request.
+- Merging that pull request publishes all 7 packages, `pdf-raster` and its 6
+  platform packages, from `main` with npm provenance.
+- Running the Release workflow by hand (`workflow_dispatch`) on another branch
+  builds and smoke-tests all 6 targets without publishing.
+- `bun run release:publish -- --dry-run` checks the packaging without
+  publishing. It needs all 6 native artifacts in `core/artifacts/`, which you
+  can download from a Release workflow run.
 
-## Read next
-
-- [Runtime and environment](/docs/runtime-and-environment)
-- [Errors and troubleshooting](/docs/errors-and-troubleshooting)
+Running `npm publish` in `core/` fails on purpose. Publish only through the
+release script.
