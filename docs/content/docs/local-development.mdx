@@ -122,6 +122,9 @@ PDFium and runs the test suite in the container. The artifact lands in
   platform packages, from `main` with npm provenance. The workflow then
   creates the `vX.Y.Z` tag and a GitHub release whose notes are that version's
   `core/CHANGELOG.md` section.
+- Pushes to `main` build the native targets only when they are about to be
+  published: no changesets are pending and the core version is not on npm.
+  Other pushes only update the "Version Packages" pull request, or do nothing.
 - Running the Release workflow by hand (`workflow_dispatch`) on another branch
   builds and smoke-tests all 8 targets without publishing.
 - `bun run release:publish -- --dry-run` checks the packaging without
