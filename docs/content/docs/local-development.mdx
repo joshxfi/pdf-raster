@@ -119,7 +119,9 @@ PDFium and runs the test suite in the container. The artifact lands in
   `bun run changeset`. CI fails without it.
 - Merging to `main` opens or updates a "Version Packages" pull request.
 - Merging that pull request publishes all 9 packages, `pdf-raster` and its 8
-  platform packages, from `main` with npm provenance.
+  platform packages, from `main` with npm provenance. The workflow then
+  creates the `vX.Y.Z` tag and a GitHub release whose notes are that version's
+  `core/CHANGELOG.md` section.
 - Running the Release workflow by hand (`workflow_dispatch`) on another branch
   builds and smoke-tests all 8 targets without publishing.
 - `bun run release:publish -- --dry-run` checks the packaging without

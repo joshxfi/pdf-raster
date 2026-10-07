@@ -204,12 +204,25 @@ jobs:
           path: core/artifacts
 
       - name: Release
+        id: changesets
         uses: changesets/action@a45c4d594aa4e2c509dc14a9f2b3b67ba3780d0d # v1.9.0
         with:
           commit: "chore: version packages"
           title: "Version Packages"
           version: bun run version-packages
           publish: bun run release:publish
+          # The action only creates releases from `changeset publish` output,
+          # which the custom publish script does not produce. The next step
+          # creates them instead.
+          createGithubReleases: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NPM_CONFIG_PROVENANCE: "true"
+
+      # Runs when the action was in publish mode (no pending changesets). The
+      # script skips versions that already have a release or are not on npm.
+      - name: Create GitHub release
+        if: steps.changesets.outputs.hasChangesets == 'false'
+        run: bun scripts/create-github-release.ts
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
